@@ -13,7 +13,7 @@
 
 - 유형/#이슈번호
     
-    ex) feat/#30,  refactor/#1
+    ex) feat/#30,  setting/#1
     
 
 | 카테고리 | 내용 |
