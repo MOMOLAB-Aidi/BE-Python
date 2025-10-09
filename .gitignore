@@ -1,10 +1,12 @@
 # 가상환경
 venv/
+.venv/
 
 # Python 캐시 파일
 __pycache__/
 *.py[cod]
 *.pyo
+.idea
 
 # 환경 변수 파일
 .env
