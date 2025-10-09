@@ -11,9 +11,9 @@
 
 ### 브랜치 명
 
-- 유형/#이슈번호-what
+- 유형/#이슈번호
     
-    ex) feat/#30-home-ui,  init/#1-add-font
+    ex) feat/#30,  refactor/#1
     
 
 | 카테고리 | 내용 |
