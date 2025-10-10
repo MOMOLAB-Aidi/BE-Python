@@ -1,9 +1,13 @@
+from typing import List
+
 from fastapi import Depends, HTTPException, APIRouter
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.db_models.user import User
 from pydantic import BaseModel
+
+from app.models.userSchemas import UserCreateResult, UserGetResult, UserUpdateResult, UserDeleteResult
 
 router = APIRouter()
 
@@ -17,6 +21,7 @@ class UserCreate(BaseModel):
 # 사용자 등록 api
 @router.post("/api/users",
              tags=["사용자"],
+             response_model=UserCreateResult,
              summary="사용자 등록",
              description="사용자를 등록하는 api입니다.",
              responses={
@@ -25,6 +30,7 @@ class UserCreate(BaseModel):
                      "content": {
                          "application/json": {
                              "example": {
+                                 "id": 1,
                                  "name": "momo",
                                  "email": "momolab@gmail.com",
                              }
@@ -43,6 +49,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 # 사용자 목록 조회 api
 @router.get("/api/users",
             tags=["사용자"],
+            response_model=List[UserGetResult],
             summary="사용자 목록 조회",
             description="사용자 목록을 조회하는 api입니다.",
             responses={
@@ -51,6 +58,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
                     "content": {
                         "application/json": {
                             "example": {
+                                "id": 1,
                                 "name": "momo",
                                 "email": "momolab@gmail.com",
                             }
@@ -72,6 +80,7 @@ class UserUpdate(BaseModel):
 # 사용자 정보 업데이트 api
 @router.put("/api/users/{user_id}",
             tags=["사용자"],
+            response_model=UserUpdateResult,
             summary="사용자 정보 업데이트",
             description="사용자의 정보를 업데이트하는 api입니다.",
             responses={
@@ -80,6 +89,7 @@ class UserUpdate(BaseModel):
                     "content": {
                         "application/json": {
                             "example": {
+                                "id": 1,
                                 "name": "momo",
                                 "email": "momolab@gmail.com",
                             }
@@ -101,6 +111,7 @@ def update_user(user_id: int, user: UserUpdate, db: Session = Depends(get_db)):
 # 사용자 삭제 api
 @router.delete("/api/users/{user_id}",
                tags=["사용자"],
+               response_model=UserDeleteResult,
                summary="사용자 삭제",
                description="사용자를 삭제하는 api입니다.",
                responses={
@@ -109,6 +120,7 @@ def update_user(user_id: int, user: UserUpdate, db: Session = Depends(get_db)):
                        "content": {
                            "application/json": {
                                "example": {
+                                   "id": 1,
                                    "name": "momo",
                                    "email": "momolab@gmail.com",
                                }
