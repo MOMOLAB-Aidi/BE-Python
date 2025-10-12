@@ -10,3 +10,6 @@ __pycache__/
 
 # 환경 변수 파일
 .env
+.secrets/
+*.json
+*.wav
