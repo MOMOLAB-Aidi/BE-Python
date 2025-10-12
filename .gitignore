@@ -12,4 +12,7 @@ __pycache__/
 .env
 .secrets/
 *.json
+
+# 샘플 데이터
 *.wav
+*.mp3
