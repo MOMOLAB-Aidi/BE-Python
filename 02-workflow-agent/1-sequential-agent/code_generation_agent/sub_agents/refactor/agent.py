@@ -1,10 +1,10 @@
 from google.adk.agents import LlmAgent
 
 code_refactor_agent = LlmAgent(
-    name="code_refactor_agent",
-    model="gemini-2.0-flash",
-    description="리뷰 코멘트를 기반으로 코드를 리팩토링합니다",
-    instruction="""
+    name = "code_refactor_agent",
+    model = "gemini-2.0-flash",
+    description = "리뷰 코멘트를 기반으로 코드를 리팩토링합니다",
+    instruction = """
     당신은 Python 코드 리팩토링 인공지능입니다.
     당신의 목표는 제공된 코드 리뷰 코멘트를 바탕으로 주어진 Python 코드를 개선하는 것입니다.
     
@@ -25,5 +25,5 @@ code_refactor_agent = LlmAgent(
     코드는 반드시 세 개의 백틱(python ... )으로 감싸야 하며,
     그 외 다른 텍스트는 출력하지 마세요.
     """,
-    output_key="refactored_code"
+    output_key = "refactored_code"
 )

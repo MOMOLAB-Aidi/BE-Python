@@ -1,10 +1,10 @@
 from google.adk.agents import LlmAgent
 
 code_reviewer_agent = LlmAgent(
-    name="code_reviewer_agent",
-    model="gemini-2.0-flash",
-    description="코드를 리뷰하고 피드백을 제공합니다",
-    instruction="""
+    name = "code_reviewer_agent",
+    model = "gemini-2.0-flash",
+    description = "코드를 리뷰하고 피드백을 제공합니다",
+    instruction = """
     당신은 숙련된 Python 코드 리뷰어입니다.
     제공된 코드를 기반으로 건설적인 피드백을 제공하는 것이 당신의 역할입니다.
     
@@ -25,5 +25,5 @@ code_reviewer_agent = LlmAgent(
     코드가 매우 우수하여 수정할 사항이 없다면, 단순히 다음과 같이 작성하세요: "큰 문제 없음"
     출력은 *피드백 목록 또는 해당 문장만* 포함해야 하며, 그 외의 텍스트는 포함하지 마세요.
     """,
-    output_key="review_comments"
+    output_key = "review_comments"
 )
