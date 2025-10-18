@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.db import engine, Base
 from app.api.routes import router as api_router
 
+import uvicorn
+
 ALLOWED_ORIGINS = [
     "http://127.0.0.1:8000",
 ]
@@ -22,16 +24,23 @@ middleware = [
     )
 ]
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 앱 시작 시 테이블 생성 (Alembic 안 쓸 때 편리)
+
+    # 앱 시작 시 테이블 생성
     Base.metadata.create_all(bind=engine)
-    yield
-    # 앱 종료 시 리소스 정리 필요하면 여기서 처리 (예: engine.dispose())
+
+    try:
+        yield
+    finally:
+        # 커넥션 풀 정리
+        engine.dispose()
+
 
 app = FastAPI(
-    title="RAG Chatbot API",
-    description="RAG 챗봇 API",
+    title="MOMOLAB AIDI API",
+    description="MOMOLAB 에이디 API",
     version="0.1.0",
     middleware=middleware,
     lifespan=lifespan,
@@ -40,12 +49,13 @@ app = FastAPI(
 # 라우터 등록
 app.include_router(api_router)
 
+
 # 헬스/루트
 @app.get("/", tags=["health"])
 def read_root():
-    return {"message": "RAG Chatbot API", "status": "ok"}
+    return {"message": "MOMOLAB AIDI API", "status": "ok"}
 
-# 로컬 실행 진입점 (uvicorn CLI로 실행해도 무방)
+
+# 로컬 실행 진입점
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
