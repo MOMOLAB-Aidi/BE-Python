@@ -170,9 +170,9 @@ def create_record(record: RecordCreate, db: Session = Depends(get_db)):
 
 # 특정 복막투석기록 조회 api
 @router.get("/api/records/{rec_id}",
-             tags=["복막투석기록"],
-             summary="기록 조회",
-             description="특정 복막투석기록을 조회하는 api입니다.",)
+            tags=["복막투석기록"],
+            summary="기록 조회",
+            description="특정 복막투석기록을 조회하는 api입니다.", )
 def get_record(rec_id: int, db: Session = Depends(get_db)):
     rec = db.query(Record).get(rec_id)
     if not rec: raise HTTPException(status_code=404, detail="not found")
@@ -181,9 +181,9 @@ def get_record(rec_id: int, db: Session = Depends(get_db)):
 
 # 복막투석기록 수정 api
 @router.patch("/api/records/{rec_id}",
-             tags=["복막투석기록"],
-             summary="기록 수정",
-             description="복막투석기록을 수정하는 api입니다.",)
+              tags=["복막투석기록"],
+              summary="기록 수정",
+              description="복막투석기록을 수정하는 api입니다.", )
 def patch_record(rec_id: int, record: RecordPatch, db: Session = Depends(get_db)):
     rec = db.query(Record).get(rec_id)
     if not rec: raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
@@ -198,7 +198,7 @@ def patch_record(rec_id: int, record: RecordPatch, db: Session = Depends(get_db)
 @router.post("/api/records/{rec_id}/agent",
              tags=["복막투석기록"],
              summary="자연어 지시로 수정",
-             description="자연어 지시로 복막투석기록을 수정하는 api입니다.",)
+             description="자연어 지시로 복막투석기록을 수정하는 api입니다.", )
 def agent_update(rec_id: int, body: AgentIn, db: Session = Depends(get_db)):
     rec = db.query(Record).get(rec_id)
     if not rec:

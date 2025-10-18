@@ -1,11 +1,34 @@
+from datetime import datetime
 from typing import Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
+
+today = datetime.now()
+today_str = today.strftime("%Y-%m-%d")
+time_str = today.strftime("%H:%M")
 
 
 class ORMBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+
 class RecordCreate(ORMBase):
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "record_date": today_str,
+                "record_time": time_str,
+                "exchange_count": 3,
+                "systolic": 118,
+                "diastolic": 72,
+                "weight_kg": 61.5,
+                "outflow_ml": 2100,
+                "clarity": "맑음",
+                "abdominal_pain": "없음",
+                "exit_site": "정상",
+            }
+        },
+    )
     record_date: str = Field(..., description="YYYY-MM-DD")
     record_time: str = Field(..., description="HH:MM")
     exchange_count: int = Field(..., ge=1, le=10)
@@ -19,6 +42,24 @@ class RecordCreate(ORMBase):
 
 
 class RecordPatch(ORMBase):
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "record_date": today_str,
+                "record_time": time_str,
+                "exchange_count": 3,
+                "systolic": 118,
+                "diastolic": 72,
+                "weight_kg": 61.5,
+                "outflow_ml": 2100,
+                "clarity": "맑음",
+                "abdominal_pain": "없음",
+                "exit_site": "정상",
+            }
+        },
+    )
+    record_date: Optional[str] = None
     record_time: Optional[str] = None
     exchange_count: Optional[int] = None
     systolic: Optional[int] = None
@@ -31,4 +72,12 @@ class RecordPatch(ORMBase):
 
 
 class AgentIn(ORMBase):
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "text": "혈압 125/78만 기록"
+            }
+        },
+    )
     text: str

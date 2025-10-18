@@ -1,5 +1,5 @@
 import re, os, json
-from datetime import time as dtime
+from datetime import time as dtime, date
 from typing import Dict, Any
 
 from dotenv import load_dotenv
@@ -24,12 +24,19 @@ def parse_time(s: str) -> dtime:
     return dtime(hour=hh, minute=mm)
 
 
+# 날짜 형식 변환
+def _format_date_kr(d: date | None) -> str:
+    if not d:
+        return ""
+    return f"{d.year}년 {d.month}월 {d.day}일"
+
+
 # dict 형식으로 변환
 def rec_to_dict(r: Record) -> Dict[str, Any]:
     return {
         "id": r.id,
-        "record_date": r.record_date.isoformat(),
-        "record_time": r.record_time.strftime("%H:%M"),
+        "record_date": r.record_date.isoformat() if r.record_date else None,
+        "record_time": r.record_time.strftime("%H:%M") if r.record_time else None,
         "exchange_count": r.exchange_count,
         "systolic": r.systolic,
         "diastolic": r.diastolic,
@@ -38,7 +45,6 @@ def rec_to_dict(r: Record) -> Dict[str, Any]:
         "clarity": r.clarity,
         "abdominal_pain": r.abdominal_pain,
         "exit_site": r.exit_site,
-        "blood_pressure_label": f"{r.systolic} / {r.diastolic} mmHg" if r.systolic and r.diastolic else "",
     }
 
 
@@ -52,27 +58,27 @@ def apply_patch(rec: Record, p: Dict[str, Any]):
         rec.time = parse_time(p["time"])
 
     if "exchange_count" in p and p["exchange_count"] is not None:
-        c = int(p["exchange_count"]);
+        c = int(p["exchange_count"])
         vrng(1 <= c <= 10, "교환회차 1~10")
         rec.exchange_count = c
 
     if "systolic" in p and p["systolic"] is not None:
-        s = int(p["systolic"]);
+        s = int(p["systolic"])
         vrng(70 <= s <= 240, "수축기 70~240")
         rec.systolic = s
 
     if "diastolic" in p and p["diastolic"] is not None:
-        d = int(p["diastolic"]);
+        d = int(p["diastolic"])
         vrng(40 <= d <= 160, "이완기 40~160")
         rec.diastolic = d
 
     if "weight_kg" in p and p["weight_kg"] is not None:
-        w = float(p["weight_kg"]);
+        w = float(p["weight_kg"])
         vrng(20.0 <= w <= 300.0, "체중 20~300kg")
         rec.weight_kg = round(w, 1)
 
     if "outflow_ml" in p and p["outflow_ml"] is not None:
-        o = int(p["outflow_ml"]);
+        o = int(p["outflow_ml"])
         vrng(0 <= o <= 5000, "유출량 0~5000mL")
         rec.outflow_ml = o
 
