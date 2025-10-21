@@ -1,19 +1,48 @@
-from sqlalchemy import Column, Integer, Date, Time, Float, String
+from sqlalchemy import Column, Integer, Date, Float, Enum, Text, select, func
+from sqlalchemy.orm import relationship, column_property
+
 from app.core.db import Base
 from app.db_models.base_entity import TimestampMixin
+from app.db_models.record_exchange import RecordExchange
 
+# 복막투석기록일지 - 공통 데이터 정의
+TurbidityEnum = Enum("없음", "있음", name="turbidity_enum")
 
-# 복막투석기록 테이블 정의
 class Record(Base, TimestampMixin):
     __tablename__ = "record"
+
     id = Column(Integer, primary_key=True, index=True)
-    record_date = Column(Date, nullable=False)
-    record_time = Column(Time, nullable=False)
-    exchange_count = Column(Integer, nullable=False) # 교환회차
-    systolic = Column(Integer, nullable=False) # 최고혈압
-    diastolic = Column(Integer, nullable=False) # 최저혈압
-    weight_kg = Column(Float, nullable=False) # 체중
-    outflow_ml = Column(Integer, nullable=False) # 유출량
-    clarity = Column(String(10), nullable=False) # 혼탁도: '맑음'|'탁함'
-    abdominal_pain = Column(String(10), nullable=False) # 복통: '없음'|'이상'
-    exit_site = Column(String(10), nullable=False) # 주사구: '정상'|'이상'
+    record_date = Column(Date, nullable=False) # 교환 날짜
+
+    weight = Column(Float, nullable=False)  # 체중 (kg)
+    systolic = Column(Integer, nullable=False) # 최고 혈압
+    diastolic = Column(Integer, nullable=False) # 최저 혈압
+    fasting_glucose = Column(Integer, nullable=False) # 공복 혈당 (mg/dL)
+    urine_count = Column(Integer, nullable=False) # 소변 횟수 (회)
+    turbidity = Column(TurbidityEnum, nullable=False)  # 복막액 혼탁(없음/있음)
+    notes = Column(Text, nullable=True) # 비고
+
+    # 관계: 회차별 데이터
+    exchanges = relationship(
+        "RecordExchange",
+        back_populates="record",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="RecordExchange.exchange_no",
+    )
+
+    # 제수량 합계 = Σ(배액량 − 주입액 중량)
+    total_uf = column_property(
+        select(
+            func.coalesce(
+                func.sum(
+                    func.coalesce(RecordExchange.drain_volume, 0)
+                    - func.coalesce(RecordExchange.fill_volume, 0)
+                ),
+                0
+            )
+        )
+        .where(RecordExchange.record_id == id)
+        .correlate_except(RecordExchange)
+        .scalar_subquery()
+    )
