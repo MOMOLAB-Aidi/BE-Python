@@ -55,6 +55,7 @@ def ex_to_dict(e: RecordExchange) -> Dict[str, Any]:
 def rec_to_dict(r: Record) -> Dict[str, Any]:
     return {
         "id": r.id,
+        "record_date": r.record_date,
         "weight": r.weight,
         "systolic": r.systolic,
         "diastolic": r.diastolic,

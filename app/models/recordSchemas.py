@@ -54,7 +54,7 @@ class RecordExchangeRead(ORMBase):
     drain_volume: Optional[int] = None
     fill_volume: Optional[int] = None
     fill_concentration: Optional[float] = None
-    uf: int = Field(..., description="제수량(배액량ml - 주입액중량g) *계산필드*")
+    uf: int = Field(..., description="제수량(배액량g - 주입액중량g) *계산필드*")
 
 
 # 일일(공통) 스키마
