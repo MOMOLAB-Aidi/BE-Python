@@ -31,13 +31,15 @@ def create_record(payload: RecordCreate, db: Session = Depends(get_db)):
     # 레코드 생성 (공통)
     rec = Record(
         record_date=d,
+        record_dw=payload.record_dw,
         weight=payload.weight,
         systolic=payload.systolic,
         diastolic=payload.diastolic,
         fasting_glucose=payload.fasting_glucose,
         urine_count=payload.urine_count,
-        turbidity=payload.turbidity,   # '없음' | '있음'
+        turbidity=payload.turbidity,
         notes=payload.notes,
+        total_uf=payload.total_uf
     )
 
     # 회차(개별) 생성
@@ -59,6 +61,7 @@ def create_record(payload: RecordCreate, db: Session = Depends(get_db)):
                 drain_volume=ex.drain_volume,
                 fill_volume=ex.fill_volume,
                 fill_concentration=ex.fill_concentration,
+                uf=ex.uf
             )
         )
 

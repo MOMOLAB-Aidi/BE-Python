@@ -48,7 +48,7 @@ def ex_to_dict(e: RecordExchange) -> Dict[str, Any]:
         "drain_volume": e.drain_volume,
         "fill_volume": e.fill_volume,
         "fill_concentration": e.fill_concentration,
-        "uf": ( (e.drain_volume or 0) - (e.fill_volume or 0) )
+        "uf": e.uf
     }
 
 # dict 형식으로 변환
@@ -56,6 +56,7 @@ def rec_to_dict(r: Record) -> Dict[str, Any]:
     return {
         "id": r.id,
         "record_date": r.record_date,
+        "record_dw": r.record_dw,
         "weight": r.weight,
         "systolic": r.systolic,
         "diastolic": r.diastolic,
@@ -64,7 +65,7 @@ def rec_to_dict(r: Record) -> Dict[str, Any]:
         "turbidity": r.turbidity,
         "notes": r.notes,
 
-        "total_uf": sum((e.drain_volume or 0) - (e.fill_volume or 0) for e in (r.exchanges or [])),
+        "total_uf": r.total_uf,
         "exchanges": [ex_to_dict(e) for e in (r.exchanges or [])],
     }
 
@@ -142,6 +143,11 @@ def upsert_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
         vrng(0 <= fc <= 100, "주입액 농도 0~100 %")
         target.fill_concentration = fc
 
+    if "uf" in p and p["uf"] is not None:
+        uf = int(p["uf"])
+        vrng(0 <= uf <= 6000, "제수량 -500~500 g")
+        target.uf = uf
+
     return target
 
 # 일일 + 회차 패치 적용
@@ -175,6 +181,6 @@ def apply_patch(rec: Record, p: Dict[str, Any]) -> None:
 
     # 2-B) 회차 단건 업데이트: 단일 dict에 회차 관련 키가 들어온 경우
     else:
-        exchange_keys = {"exchange_no", "exchange_time", "drain_volume", "fill_volume", "fill_concentration"}
+        exchange_keys = {"exchange_no", "exchange_time", "drain_volume", "fill_volume", "fill_concentration", "uf"}
         if any(k in p for k in exchange_keys):
             upsert_exchange(rec, p)

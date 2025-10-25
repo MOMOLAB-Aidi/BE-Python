@@ -5,11 +5,15 @@ from pydantic import BaseModel, Field, ConfigDict
 today = datetime.now()
 today_str = today.strftime("%Y-%m-%d")
 time_str = today.strftime("%H:%M")
+weekday_kr = ["월","화","수","목","금","토","일"]
+today_dw = weekday_kr[today.weekday()]
 
 
 class ORMBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+DayWeekKR = Literal["월","화","수","목","금","토","일"]
+Turbidity = Literal["없음", "있음"]
 
 # 회차(개별) 스키마
 class RecordExchangeCreate(ORMBase):
@@ -20,15 +24,17 @@ class RecordExchangeCreate(ORMBase):
                 "exchange_time": time_str,
                 "drain_volume": 2100,
                 "fill_volume": 2000,
-                "fill_concentration": 2.5
+                "fill_concentration": 2.5,
+                "uf": 100
             }
         }
     )
     exchange_no: int = Field(..., ge=1, le=12, description="구분(회차)")
     exchange_time: str = Field(..., description="HH:MM")
-    drain_volume: Optional[int] = Field(None, ge=0, le=6000)
-    fill_volume: Optional[int] = Field(None, ge=0, le=6000)
-    fill_concentration: Optional[float] = Field(None, ge=0, le=100, description="예: 1.5, 2.5, 4.25")
+    drain_volume: int = Field(..., ge=0, le=6000)
+    fill_volume: int = Field(..., ge=0, le=6000)
+    fill_concentration: float = Field(..., ge=0, le=100, description="예: 1.5, 2.5, 4.25")
+    uf: int = Field(..., ge=-500, le=500)
 
 
 class RecordExchangePatch(ORMBase):
@@ -44,27 +50,25 @@ class RecordExchangePatch(ORMBase):
     exchange_time: Optional[str] = None
     drain_volume: Optional[int] = Field(None, ge=0, le=6000)
     fill_volume: Optional[int] = Field(None, ge=0, le=6000)
-    fill_concentration: Optional[float] = Field(None, max_length=16)
-
+    fill_concentration: Optional[float] = Field(None, ge=0, le=100)
+    uf: Optional[int] = Field(None, ge=-500, le=500)
 
 class RecordExchangeRead(ORMBase):
     id: int
     exchange_no: int
     exchange_time: str
-    drain_volume: Optional[int] = None
-    fill_volume: Optional[int] = None
-    fill_concentration: Optional[float] = None
-    uf: int = Field(..., description="제수량(배액량g - 주입액중량g) *계산필드*")
+    drain_volume: int
+    fill_volume: int
+    fill_concentration: float
+    uf: int
 
-
-# 일일(공통) 스키마
-Turbidity = Literal["없음", "있음"]
 
 class RecordCreate(ORMBase):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "record_date": today_str,
+                "record_dw": today_dw,
                 "weight": 61.5,
                 "systolic": 118,
                 "diastolic": 72,
@@ -72,33 +76,38 @@ class RecordCreate(ORMBase):
                 "urine_count": 6,
                 "turbidity": "없음",
                 "notes": "환자의 상태 양호",
+                "total_uf": "150",
                 "exchanges": [
                     {
                         "exchange_no": 1,
                         "exchange_time": "07:30",
                         "drain_volume": 2100,
                         "fill_volume": 2000,
-                        "fill_concentration": 2.5
+                        "fill_concentration": 2.5,
+                        "uf": 100
                     },
                     {
                         "exchange_no": 2,
                         "exchange_time": "12:00",
                         "drain_volume": 2050,
                         "fill_volume": 2000,
-                        "fill_concentration": 2.5
+                        "fill_concentration": 2.5,
+                        "uf": 50
                     }
                 ]
             }
         }
     )
     record_date: str = Field(..., description="YYYY-MM-DD")
+    record_dw: DayWeekKR = Field(..., description="요일(월~일)")
     weight: float = Field(..., ge=20.0, le=300.0)
     systolic: int = Field(..., ge=70, le=240)
     diastolic: int = Field(..., ge=40, le=160)
-    fasting_glucose: Optional[int] = Field(None, ge=40, le=600)
-    urine_count: Optional[int] = Field(None, ge=0, le=50)
-    turbidity: Optional[Turbidity] = None
+    fasting_glucose: int = Field(..., ge=40, le=600)
+    urine_count: int = Field(..., ge=0, le=50)
+    turbidity: Turbidity
     notes: Optional[str] = Field(None, max_length=2000)
+    total_uf: int = Field(..., ge=0, le=1000)
     # 회차들 함께 생성 가능
     exchanges: Annotated[list[RecordExchangeCreate], Field(default_factory=list)]
 
@@ -114,6 +123,7 @@ class RecordPatch(ORMBase):
         }
     )
     record_date: Optional[str] = None
+    record_dw: Optional[DayWeekKR] = None
     weight: Optional[float] = Field(None, ge=20.0, le=300.0)
     systolic: Optional[int] = Field(None, ge=70, le=240)
     diastolic: Optional[int] = Field(None, ge=40, le=160)
@@ -126,12 +136,13 @@ class RecordPatch(ORMBase):
 class RecordRead(ORMBase):
     id: int
     record_date: str
+    record_dw: DayWeekKR
     weight: float
     systolic: int
     diastolic: int
-    fasting_glucose: Optional[int] = None
-    urine_count: Optional[int] = None
-    turbidity: Optional[Turbidity] = None
-    notes: Optional[str] = None
-    total_uf: int = Field(..., description="Σ(배액량ml - 주입액중량g) *계산필드*")
+    fasting_glucose: int
+    urine_count: int
+    turbidity: Turbidity
+    notes: str
+    total_uf: int
     exchanges: List[RecordExchangeRead]
