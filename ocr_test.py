@@ -9,7 +9,7 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 gemini = genai.Client(api_key=GOOGLE_API_KEY) if (genai and GOOGLE_API_KEY) else None
 
-image_path = r"C:\Users\user1\PycharmProjects\PythonProject\BE-Python\sample3.jpg"
+image_path = r"/sample3.jpg"
 with open(image_path, "rb") as image_file:
     encoded_image = b64encode(image_file.read()).decode('utf-8')
 
