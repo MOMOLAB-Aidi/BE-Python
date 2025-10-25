@@ -20,14 +20,11 @@ class RecordExchange(Base, TimestampMixin):
 
     drain_volume = Column(Integer, nullable=False) # 배액량 (g)
     fill_volume = Column(Integer, nullable=False)  # 주입량 (g)
-    fill_concentration = Column(Float, nullable=False) # 주입액 농도(%)
+    fill_concentration = Column(Float, nullable=False) # 주입액 농도 (%)
+
+    uf = Column(Integer, nullable=False) # 제수량 (배액량 - 주입액 중량)
 
     record = relationship("Record", back_populates="exchanges")
-
-    # 제수량 = 배액량 − 주입액 중량
-    uf = column_property(
-        func.coalesce(drain_volume, 0) - func.coalesce(fill_volume, 0)
-    )
 
 
 # 조회/정합성 인덱스

@@ -135,13 +135,3 @@ class RecordRead(ORMBase):
     notes: Optional[str] = None
     total_uf: int = Field(..., description="Σ(배액량ml - 주입액중량g) *계산필드*")
     exchanges: List[RecordExchangeRead]
-
-
-# 에이전트 입력 (자연어 지시)
-class AgentIn(ORMBase):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {"text": "혈압 125/78만 기록"}
-        }
-    )
-    text: str = Field(..., description="자연어 명령/요청")
