@@ -34,16 +34,8 @@
 3. Add - Commit - Push - Pull Request(PR)
     1. Commit은 최대한 자주, 적은 양
     2. Commit시에 Issue를 연결
-4. PR이 작성되면 작성자 이외의 다른 팀원이 Code Review를 진행합니다.
-5. Code Review가 완료되면 PR 작성자가 dev Branch로 Merge 합니다.
-    1. Merge 후 카톡방에 무조건 공유합니다.
-6. Merge 된 작업이 있으면 다른 브랜치에서 작업을 진행 중이던 개발자는 본인의 브랜치로 Merge된 작업을 Pull 받아옵니다. (최신화 습관 들이기!)
-
-### 협업 규칙
-
-- dev 브랜치에서의 작업은 금지합니다. 단, 초기 세팅 및 README 작성은 dev 브랜치에서 수행 가능합니다.
-- 본인의 PR은 본인이 Merge합니다.
-- Commit, Push, Merge, PR 등 모든 작업은 앱이 정상적으로 실행되는지 확인 후 수행합니다.
+4. PR이 작성 후 충돌사항 없으면 merge하기
+5. 새로운 작업을 시작할 때 dev에서 pull 받아오기
 
 ### Issue Convention
 
