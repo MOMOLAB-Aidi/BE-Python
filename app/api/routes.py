@@ -10,7 +10,7 @@ from app.db_models.record_exchange import RecordExchange
 from app.db_models.record import Record
 
 from app.models.recordSchemas import RecordCreate, RecordPatch
-from app.services.ocrService import ocr_bytes_to_text, OcrError
+from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json
 from app.services.recordService import parse_time, rec_to_dict, apply_patch
 
 router = APIRouter()
@@ -119,7 +119,7 @@ def ocr_to_text(file: UploadFile = File(...)):
     try:
         raw = file.file.read()
 
-        text = ocr_bytes_to_text(
+        data = ocr_bytes_to_pdrecord_json(
             file_bytes=raw,
             content_type=file.content_type or "application/octet-stream",
         )
@@ -129,7 +129,7 @@ def ocr_to_text(file: UploadFile = File(...)):
             "content_type": file.content_type or "",
             "size_bytes": len(raw),
             "model": "gemini-2.5-flash",
-            "text": text,
+            "result": data,   # 구조화된 값들
         }
         return JSONResponse(payload)
     except OcrError as e:
