@@ -12,8 +12,8 @@ from app.db_models.record_exchange import RecordExchange
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-gemini = genai.Client(api_key=GEMINI_API_KEY) if (genai and GEMINI_API_KEY) else None
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+gemini = genai.Client(api_key=GOOGLE_API_KEY) if (genai and GOOGLE_API_KEY) else None
 
 
 # 공통 유틸
