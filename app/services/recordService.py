@@ -1,19 +1,12 @@
-import re, os, json
+import re
 from datetime import time as dtime, date
 from typing import Dict, Any, Optional
 
-from dotenv import load_dotenv
 from fastapi import HTTPException
 
 from app.db_models.record import Record
-from google import genai
 
 from app.db_models.record_exchange import RecordExchange
-
-load_dotenv()
-
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-gemini = genai.Client(api_key=GOOGLE_API_KEY) if (genai and GOOGLE_API_KEY) else None
 
 
 # 공통 유틸
