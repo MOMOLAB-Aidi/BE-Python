@@ -23,7 +23,7 @@ def parse_time(s: str) -> dtime:
         raise ValueError("시간 범위 오류(0~23시, 0~59분)")
     return dtime(hour=hh, minute=mm)
 
-# 직렬화(dict)
+# 회차 정보 직렬화(dict)
 def ex_to_dict(e: RecordExchange) -> Dict[str, Any]:
     return {
         "id": e.id,
@@ -35,6 +35,7 @@ def ex_to_dict(e: RecordExchange) -> Dict[str, Any]:
         "uf": e.uf
     }
 
+# 공통 정보 직렬화(dict)
 def rec_to_dict(r: Record) -> Dict[str, Any]:
     return {
         "id": r.id,
@@ -101,7 +102,6 @@ def apply_record_patch(rec: Record, p: Dict[str, Any]) -> None:
         rec.notes = str(p["notes"])[:2000]
 
     if "total_uf" in p and p["total_uf"] is not None:
-        # 합계는 음수도 가능하게 허용
         try:
             tu = int(p["total_uf"])
         except Exception:

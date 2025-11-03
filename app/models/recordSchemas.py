@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from typing import Optional, Literal, List, Annotated
+from typing import Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 # 오늘 기본값 예시 구성
@@ -21,7 +21,7 @@ class RecordExchangeCreate(ORMBase):
         json_schema_extra={
             "example": {
                 "exchange_no": 1,
-                "exchange_time": time_str,   # "HH:MM"
+                "exchange_time": time_str,
                 "drain_volume": 2100,
                 "fill_volume": 2000,
                 "fill_concentration": 2.5,
@@ -57,7 +57,7 @@ class RecordExchangePatch(ORMBase):
 class RecordExchangeRead(ORMBase):
     id: int
     exchange_no: int
-    exchange_time: str     # "HH:MM"
+    exchange_time: str
     drain_volume: int
     fill_volume: int
     fill_concentration: float
@@ -77,7 +77,7 @@ class RecordCommonCreate(ORMBase):
                 "urine_count": 6,
                 "turbidity": "없음",
                 "notes": "환자의 상태 양호",
-                "total_uf": 150 # total_uf는 환자 수기 입력으로 '나중에' 입력해도 되므로 Optional
+                "total_uf": 150 # total_uf는 현재 구조 상 나중 입력
             }
         }
     )
