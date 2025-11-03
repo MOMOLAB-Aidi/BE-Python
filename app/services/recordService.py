@@ -1,20 +1,18 @@
 import re
 from datetime import time as dtime, date
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from fastapi import HTTPException
 
 from app.db_models.record import Record
-
 from app.db_models.record_exchange import RecordExchange
-
 
 # 공통 유틸
 def vrng(cond: bool, msg: str):
     if not cond:
         raise HTTPException(status_code=400, detail=msg)
 
-# 시간 형식 검증
+# "HH:MM" 파싱
 def parse_time(s: str) -> dtime:
     s = (s or "").strip().replace("시", ":").replace(".", ":")
     m = re.match(r"^\s*(\d{1,2})\s*:\s*(\d{2})\s*$", s)
@@ -25,14 +23,7 @@ def parse_time(s: str) -> dtime:
         raise ValueError("시간 범위 오류(0~23시, 0~59분)")
     return dtime(hour=hh, minute=mm)
 
-
-# 날짜 형식 변환
-def _format_date_kr(d: Optional[date]) -> str:
-    if not d:
-        return ""
-    return f"{d.year}년 {d.month}월 {d.day}일"
-
-# dict 형식으로 변환
+# 직렬화(dict)
 def ex_to_dict(e: RecordExchange) -> Dict[str, Any]:
     return {
         "id": e.id,
@@ -44,11 +35,10 @@ def ex_to_dict(e: RecordExchange) -> Dict[str, Any]:
         "uf": e.uf
     }
 
-# dict 형식으로 변환
 def rec_to_dict(r: Record) -> Dict[str, Any]:
     return {
         "id": r.id,
-        "record_date": r.record_date,
+        "record_date": r.record_date.strftime("%Y-%m-%d") if isinstance(r.record_date, date) else r.record_date,
         "record_dw": r.record_dw,
         "weight": r.weight,
         "systolic": r.systolic,
@@ -57,14 +47,27 @@ def rec_to_dict(r: Record) -> Dict[str, Any]:
         "urine_count": r.urine_count,
         "turbidity": r.turbidity,
         "notes": r.notes,
-
         "total_uf": r.total_uf,
         "exchanges": [ex_to_dict(e) for e in (r.exchanges or [])],
     }
 
-
-# 공통 수정사항 적용
+# 공통 정보 필드 패치
 def apply_record_patch(rec: Record, p: Dict[str, Any]) -> None:
+    if "record_date" in p and p["record_date"] is not None:
+        rd = p["record_date"]
+        if isinstance(rd, str):
+            try:
+                rec.record_date = date.fromisoformat(rd)
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"record_date 형식 오류: {rd}")
+        elif isinstance(rd, date):
+            rec.record_date = rd
+
+    if "record_dw" in p and p["record_dw"] is not None:
+        dw = str(p["record_dw"])
+        vrng(dw in {"월", "화", "수", "목", "금", "토", "일"}, "record_dw는 월~일 중 하나여야 합니다.")
+        rec.record_dw = dw
+
     if "weight" in p and p["weight"] is not None:
         w = float(p["weight"])
         vrng(20.0 <= w <= 300.0, "체중 20~300kg")
@@ -97,14 +100,22 @@ def apply_record_patch(rec: Record, p: Dict[str, Any]) -> None:
     if "notes" in p and p["notes"] is not None:
         rec.notes = str(p["notes"])[:2000]
 
+    if "total_uf" in p and p["total_uf"] is not None:
+        # 합계는 음수도 가능하게 허용
+        try:
+            tu = int(p["total_uf"])
+        except Exception:
+            raise HTTPException(status_code=400, detail="total_uf는 정수여야 합니다.")
+        vrng(-5000 <= tu <= 5000, "total_uf 범위 오류(±5000)")
+        rec.total_uf = tu
 
-# 패치 적용: 회차(개별) 수정사항 적용
+# 회차 정보 upsert
 def upsert_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
     vrng("exchange_no" in p and p["exchange_no"] is not None, "회차(개별)에는 exchange_no가 필요합니다.")
     ex_no = int(p["exchange_no"])
     vrng(1 <= ex_no <= 12, "회차는 1~12 범위")
 
-    # 이미 로딩된 관계에서 탐색
+    # 기존 찾기
     target = None
     if rec.exchanges:
         for e in rec.exchanges:
@@ -112,12 +123,11 @@ def upsert_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
                 target = e
                 break
 
-    # 없으면 새로 만듦
+    # 없으면 신규
     if target is None:
         target = RecordExchange(exchange_no=ex_no)
         rec.exchanges.append(target)
 
-    # 필드 적용
     if "exchange_time" in p and p["exchange_time"] is not None:
         target.exchange_time = parse_time(p["exchange_time"])
 
@@ -138,42 +148,7 @@ def upsert_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
 
     if "uf" in p and p["uf"] is not None:
         uf = int(p["uf"])
-        vrng(0 <= uf <= 6000, "제수량 -500~500 g")
+        vrng(-500 <= uf <= 500, "제수량 -500~500 g")
         target.uf = uf
 
     return target
-
-# 일일 + 회차 패치 적용
-def apply_patch(rec: Record, p: Dict[str, Any]) -> None:
-    if not isinstance(p, dict):
-        raise HTTPException(status_code=400, detail="patch payload는 dict여야 합니다.")
-
-    # 1) 일일 공통 먼저 적용
-    apply_record_patch(rec, p)
-
-    # 2-A) 회차 배치 업데이트: {"exchanges": [ {...}, {...} ]}
-    if "exchanges" in p and p["exchanges"] is not None:
-        ex_list = p["exchanges"]
-        if not isinstance(ex_list, list):
-            raise HTTPException(status_code=400, detail="exchanges는 리스트여야 합니다.")
-
-        seen = set()
-        for ex in ex_list:
-            if not isinstance(ex, dict):
-                raise HTTPException(status_code=400, detail="exchanges 항목은 dict여야 합니다.")
-            if "exchange_no" not in ex or ex["exchange_no"] is None:
-                raise HTTPException(status_code=400, detail="각 회차에는 exchange_no가 필요합니다.")
-
-            ex_no = int(ex["exchange_no"])
-            if ex_no in seen:
-                raise HTTPException(status_code=400, detail=f"회차 번호 중복: {ex_no}")
-            seen.add(ex_no)
-
-            # 각 회차 패치를 upsert
-            upsert_exchange(rec, ex)
-
-    # 2-B) 회차 단건 업데이트: 단일 dict에 회차 관련 키가 들어온 경우
-    else:
-        exchange_keys = {"exchange_no", "exchange_time", "drain_volume", "fill_volume", "fill_concentration", "uf"}
-        if any(k in p for k in exchange_keys):
-            upsert_exchange(rec, p)
