@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, APIRouter, UploadFile, File
+from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response
 from sqlalchemy import asc
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date
@@ -22,7 +22,9 @@ router = APIRouter()
     "/api/v1/records",
     tags=["복막투석기록-공통"],
     summary="공통 정보 생성",
-    description="회차 없이 공통 정보만 생성합니다."
+    description="회차 없이 공통 정보만 생성합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
 )
 def create_record_common(payload: RecordCommonCreate, db: Session = Depends(get_db)):
     d = payload.record_date or _date.today()
@@ -43,14 +45,16 @@ def create_record_common(payload: RecordCommonCreate, db: Session = Depends(get_
     db.add(rec)
     db.commit()
     db.refresh(rec)
-    return rec_to_dict(rec)
+    return Response(status_code=204)
 
 # 복막투석기록 공통 정보 수정 api
 @router.patch(
     "/api/v1/records/{rec_id}",
     tags=["복막투석기록-공통"],
     summary="공통 정보 수정",
-    description="공통 정보만 부분 수정합니다."
+    description="공통 정보만 부분 수정합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
 )
 def patch_record_common(rec_id: int, payload: RecordCommonPatch, db: Session = Depends(get_db)):
     rec = db.get(Record, rec_id)
@@ -63,14 +67,16 @@ def patch_record_common(rec_id: int, payload: RecordCommonPatch, db: Session = D
     db.add(rec)
     db.commit()
     db.refresh(rec)
-    return rec_to_dict(rec)
+    return Response(status_code=204)
 
 # 복막투석기록 회차 정보 생성 api
 @router.post(
     "/api/v1/records/{rec_id}/exchanges",
     tags=["복막투석기록-회차"],
     summary="회차 정보 생성",
-    description="특정 기록에 회차 정보를 생성합니다."
+    description="특정 기록에 회차 정보를 생성합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
 )
 def upsert_record_exchange(rec_id: int, payload: RecordExchangeCreate, db: Session = Depends(get_db)):
     rec = db.get(Record, rec_id)
@@ -83,14 +89,16 @@ def upsert_record_exchange(rec_id: int, payload: RecordExchangeCreate, db: Sessi
     db.add(rec)
     db.commit()
     db.refresh(rec)
-    return rec_to_dict(rec)
+    return Response(status_code=204)
 
 # 복막투석기록 회차 정보 수정 api
 @router.patch(
     "/api/v1/records/{rec_id}/exchanges/{exchange_no}",
     tags=["복막투석기록-회차"],
     summary="회차 정보 수정",
-    description="특정 기록의 특정 회차 정보를 수정합니다."
+    description="특정 기록의 특정 회차 정보를 수정합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
 )
 def patch_record_exchange(rec_id: int, exchange_no: int, payload: RecordExchangePatch, db: Session = Depends(get_db)):
     rec = db.get(Record, rec_id)
@@ -105,7 +113,7 @@ def patch_record_exchange(rec_id: int, exchange_no: int, payload: RecordExchange
     db.add(rec)
     db.commit()
     db.refresh(rec)
-    return rec_to_dict(rec)
+    return Response(status_code=204)
 
 # 특정 복막투석기록 조회 api (공통 + 회차)
 @router.get(
@@ -125,53 +133,6 @@ def get_record(rec_id: int, db: Session = Depends(get_db)):
         .one()
     )
     return rec_to_dict(rec)
-
-# 특정 복막투석기록 조회 (공통)
-@router.get(
-    "/api/v1/records/{rec_id}/common",
-    tags=["복막투석기록-공통"],
-    summary="공통 정보 조회",
-    description="특정 기록(rec_id)의 공통정보를 조회합니다."
-)
-def get_record_common(rec_id: int, db: Session = Depends(get_db)):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    return {
-        "id": rec.id,
-        "record_date": rec.record_date,
-        "record_dw": rec.record_dw,
-        "weight": rec.weight,
-        "systolic": rec.systolic,
-        "diastolic": rec.diastolic,
-        "fasting_glucose": rec.fasting_glucose,
-        "urine_count": rec.urine_count,
-        "turbidity": rec.turbidity,
-        "notes": rec.notes,
-        "total_uf": rec.total_uf
-    }
-
-# 특정 복막투석기록의 회차정보 목록 조회
-@router.get(
-    "/api/v1/records/{rec_id}/exchanges",
-    tags=["복막투석기록-회차"],
-    summary="회차 목록 조회",
-    description="특정 기록(rec_id)의 회차 목록을 조회합니다."
-)
-def list_record_exchanges(rec_id: int, db: Session = Depends(get_db)):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    # 같은 기록에 속한 회차만 정렬해서 반환
-    rows = (
-        db.query(RecordExchange)
-        .filter(RecordExchange.record_id == rec_id)
-        .order_by(asc(RecordExchange.exchange_no))
-        .all()
-    )
-    return [ex_to_dict(e) for e in rows]
 
 # 특정 복막투석기록 회차 정보 조회
 @router.get(
