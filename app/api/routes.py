@@ -134,53 +134,6 @@ def get_record(rec_id: int, db: Session = Depends(get_db)):
     )
     return rec_to_dict(rec)
 
-# 특정 복막투석기록 조회 (공통)
-@router.get(
-    "/api/v1/records/{rec_id}/common",
-    tags=["복막투석기록-공통"],
-    summary="공통 정보 조회",
-    description="특정 기록(rec_id)의 공통정보를 조회합니다."
-)
-def get_record_common(rec_id: int, db: Session = Depends(get_db)):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    return {
-        "id": rec.id,
-        "record_date": rec.record_date,
-        "record_dw": rec.record_dw,
-        "weight": rec.weight,
-        "systolic": rec.systolic,
-        "diastolic": rec.diastolic,
-        "fasting_glucose": rec.fasting_glucose,
-        "urine_count": rec.urine_count,
-        "turbidity": rec.turbidity,
-        "notes": rec.notes,
-        "total_uf": rec.total_uf
-    }
-
-# 특정 복막투석기록의 회차정보 목록 조회
-@router.get(
-    "/api/v1/records/{rec_id}/exchanges",
-    tags=["복막투석기록-회차"],
-    summary="회차 목록 조회",
-    description="특정 기록(rec_id)의 회차 목록을 조회합니다."
-)
-def list_record_exchanges(rec_id: int, db: Session = Depends(get_db)):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    # 같은 기록에 속한 회차만 정렬해서 반환
-    rows = (
-        db.query(RecordExchange)
-        .filter(RecordExchange.record_id == rec_id)
-        .order_by(asc(RecordExchange.exchange_no))
-        .all()
-    )
-    return [ex_to_dict(e) for e in rows]
-
 # 특정 복막투석기록 회차 정보 조회
 @router.get(
     "/api/v1/records/{rec_id}/exchanges/{exchange_id}",
