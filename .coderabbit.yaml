@@ -1,0 +1,90 @@
+language: ko-KR
+
+reviews:
+  # 톤/스타일
+  profile: chill
+  high_level_summary: true
+  review_status: true
+  request_changes_workflow: false
+
+  # PR 자동 리뷰
+  auto_review:
+    enabled: true       # PR 생성/업데이트 시 자동 리뷰
+    drafts: true        # Draft PR도 리뷰
+
+  # 대상 브랜치
+  target_branches:
+    - main
+    - dev
+
+  # 디렉터리별 맞춤 리뷰 지침
+  path_instructions:
+    - path: "app/api/**"
+      instructions: |
+        [API 레이어 점검]
+        1) 라우팅/스키마
+           - FastAPI 라우트가 REST 의미론 지키는지(상태코드, 204 No Content 시 바디 없음).
+           - request/response_model 분리와 유효성 검증(Pydantic) 적절성.
+        2) 에러 처리
+           - HTTPException/전역 핸들러 일관성, 민감정보 노출 금지.
+        3) 문서화
+           - OpenAPI summary/description/response 설명 최신화.
+        4) 성능/보안
+           - 페이징/필터링, CORS, 인증/인가(의존성) 누락 여부.
+
+    - path: "app/services/**"
+      instructions: |
+        [비즈니스 로직 점검]
+        1) SRP/응집도
+           - 서비스 메서드가 단일 책임 유지, 중복 로직은 유틸화.
+        2) 트랜잭션
+           - readOnly와 쓰기 구분, 롤백 정책 명확성.
+        3) 성능
+           - N+1 방지(필요시 joinedload/selectinload), 캐시 고려.
+        4) 예외
+           - 도메인 커스텀 예외 사용, 메시지/로그 민감정보 마스킹.
+
+    - path: "app/models/**"
+      instructions: |
+        [Pydantic/DTO/Schema 점검]
+        1) 요청/응답 모델 분리, Optional/Nullable 비즈 규칙과 일치.
+        2) Enum/제약조건(정규식, 범위) 명확화.
+        3) 직렬화/역직렬화 포맷(날짜/시간/소수점) 일관성.
+
+    - path: "app/db_models/**"
+      instructions: |
+        [SQLAlchemy/DB 스키마 점검]
+        1) 컬럼 제약(NOT NULL, DEFAULT, UNIQUE)과 코드 일치.
+        2) 관계/로딩 전략(EAGER/LAZY) 및 N+1 위험.
+        3) 인덱스/유니크 제약 적정성, 마이그레이션(Alembic) 반영 여부.
+        4) 세션 라이프사이클(커밋/롤백) 일관성.
+
+    - path: "app/core/**"
+      instructions: |
+        [코어/환경/설정 점검]
+        1) 설정 관리(.env/환경변수)와 보안 키 하드코딩 금지.
+        2) 로깅/모니터링(요청ID, 레벨 구분), 예외 미들웨어 구성.
+        3) 의존성 주입/팩토리 패턴으로 순환참조 방지.
+        4) 성능/보안 관련 글로벌 미들웨어(CORS, GZip 등) 적절성.
+
+  # 포함/제외 경로 필터
+  path_filters:
+    # 제외(무시)
+    - "!**/*.md"
+    - "!**/*.txt"
+    - "!requirements.txt"
+    - "!infra/**"
+    - "!build/**"
+    - "!dist/**"
+    - "!**/__pycache__/**"
+    - "!**/.pytest_cache/**"
+    - "!**/.mypy_cache/**"
+    - "!**/node_modules/**"
+    - "!**/*.min.js"
+
+    # 포함(검토 대상 루트)
+    - "app/api/**"
+    - "app/services/**"
+    - "app/models/**"
+    - "app/db_models/**"
+    - "app/core/**"
