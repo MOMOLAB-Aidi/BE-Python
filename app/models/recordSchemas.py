@@ -83,12 +83,12 @@ class RecordCommonCreate(ORMBase):
     )
     record_date: date = Field(..., description="YYYY-MM-DD")
     record_dw: DayWeekKR = Field(..., description="요일(월~일)")
-    weight: Optional[float] = Field(None, ge=20.0, le=300.0)
-    systolic: Optional[int] = Field(None, ge=70, le=240)
-    diastolic: Optional[int] = Field(None, ge=40, le=160)
-    fasting_glucose: Optional[int] = Field(None, ge=40, le=600)
-    urine_count: Optional[int] = Field(None, ge=0, le=50)
-    turbidity: Optional[Turbidity] = None
+    weight: float = Field(None, ge=20.0, le=300.0)
+    systolic: int = Field(None, ge=70, le=240)
+    diastolic: int = Field(None, ge=40, le=160)
+    fasting_glucose: int = Field(None, ge=40, le=600)
+    urine_count: int = Field(None, ge=0, le=50)
+    turbidity: Turbidity = None
     notes: Optional[str] = Field(None, max_length=2000)
     total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
 

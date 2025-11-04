@@ -25,7 +25,7 @@ class Record(Base, TimestampMixin):
     turbidity = Column(TurbidityEnum, nullable=False)  # 복막액 혼탁(없음/있음)
     notes = Column(Text, nullable=True) # 비고
 
-    total_uf = Column(Integer, nullable=False)  # 제수량 합계
+    total_uf = Column(Integer, nullable=True)  # 제수량 합계
 
     # 관계: 회차별 데이터
     exchanges = relationship(
