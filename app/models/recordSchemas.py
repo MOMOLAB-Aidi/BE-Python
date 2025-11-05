@@ -77,20 +77,20 @@ class RecordCommonCreate(ORMBase):
                 "urine_count": 6,
                 "turbidity": "없음",
                 "notes": "환자의 상태 양호",
-                "total_uf": 150 # total_uf는 현재 구조 상 나중 입력
+                "total_uf": 150
             }
         }
     )
     record_date: date = Field(..., description="YYYY-MM-DD")
     record_dw: DayWeekKR = Field(..., description="요일(월~일)")
-    weight: float = Field(None, ge=20.0, le=300.0)
-    systolic: int = Field(None, ge=70, le=240)
-    diastolic: int = Field(None, ge=40, le=160)
-    fasting_glucose: int = Field(None, ge=40, le=600)
-    urine_count: int = Field(None, ge=0, le=50)
-    turbidity: Turbidity = None
+    weight: float = Field(..., ge=20.0, le=300.0)
+    systolic: int = Field(..., ge=70, le=240)
+    diastolic: int = Field(..., ge=40, le=160)
+    fasting_glucose: int = Field(..., ge=40, le=600)
+    urine_count: int = Field(..., ge=0, le=50)
+    turbidity: Turbidity = Field(..., description="혼탁도(없음/있음)")
     notes: Optional[str] = Field(None, max_length=2000)
-    total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
+    total_uf: int = Field(..., ge=-5000, le=5000)
 
 # 공통 정보 수정 스키마
 class RecordCommonPatch(ORMBase):
