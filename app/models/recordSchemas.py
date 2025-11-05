@@ -77,7 +77,7 @@ class RecordCommonCreate(ORMBase):
                 "urine_count": 6,
                 "turbidity": "없음",
                 "notes": "환자의 상태 양호",
-                "total_uf": 150 # total_uf는 현재 구조 상 나중 입력
+                "total_uf": 150
             }
         }
     )
@@ -90,7 +90,7 @@ class RecordCommonCreate(ORMBase):
     urine_count: int = Field(None, ge=0, le=50)
     turbidity: Turbidity = None
     notes: Optional[str] = Field(None, max_length=2000)
-    total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
+    total_uf: int = Field(None, ge=-5000, le=5000)
 
 # 공통 정보 수정 스키마
 class RecordCommonPatch(ORMBase):
