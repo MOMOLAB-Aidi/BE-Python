@@ -1,0 +1,15 @@
+# 가상환경/캐시
+.venv/
+__pycache__/
+*.pyc
+
+# 로컬 설정/비밀
+.env
+.secrets/
+*.json
+*.pem
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
