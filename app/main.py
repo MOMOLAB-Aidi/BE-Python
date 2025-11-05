@@ -11,7 +11,9 @@ from app.api.routes import router as api_router
 import uvicorn
 
 ALLOWED_ORIGINS = [
-    "http://127.0.0.1:8000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",
+    "https://momolab-service-704930097925.asia-northeast3.run.app"
 ]
 
 # CORS
