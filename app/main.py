@@ -5,16 +5,13 @@ from fastapi import FastAPI
 from starlette.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.core.db import engine, Base
 from app.api.routes import router as api_router
 
 import uvicorn
 
-ALLOWED_ORIGINS = [
-    "http://127.0.0.1:3000",
-    "http://localhost:3000",
-    "https://momolab-service-704930097925.asia-northeast3.run.app"
-]
+ALLOWED_ORIGINS = settings.ALLOWED_ORIGINS
 
 # CORS
 middleware = [

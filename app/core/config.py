@@ -1,4 +1,5 @@
-from typing import Optional
+import json
+from typing import Optional, List
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -6,6 +7,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 load_dotenv()
 
 class Settings(BaseSettings):
+    # 원문 문자열(.env에서 CSV 또는 JSON 배열 문자열로)
+    ALLOWED_ORIGINS_RAW: str = ""
+
+    @property
+    def ALLOWED_ORIGINS(self) -> List[str]:
+        s = (self.ALLOWED_ORIGINS_RAW or "").strip()
+        if not s:
+            return []
+        if s.startswith("["):
+            return json.loads(s)
+        return [x.strip() for x in s.split(",") if x.strip()]
+
     DATABASE_URL: Optional[str] = None
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
