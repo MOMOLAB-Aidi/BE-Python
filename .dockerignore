@@ -1,15 +1,18 @@
-# 가상환경/캐시
-.venv/
+.git
+.gitignore
 __pycache__/
 *.pyc
-
-# 로컬 설정/비밀
-.env
+*.pyo
+*.pyd
+*.log
+.mypy_cache/
+.pytest_cache/
+.venv/
+env/
+dist/
+build/
 .secrets/
-*.json
-*.pem
-
-# IDE/OS
-.vscode/
-.idea/
-.DS_Store
+*.sqlite3
+tests/
+docs/
+node_modules/
