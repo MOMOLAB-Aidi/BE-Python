@@ -14,8 +14,6 @@ from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
 
-USE_CLOUD_SQL = os.getenv("USE_CLOUD_SQL", "0") == "1"
-
 # 전역 상태
 _db_lock = threading.Lock()
 _connector: Optional[Connector] = None
@@ -35,12 +33,10 @@ def _create_engine_and_connector() -> Tuple[Engine, Optional[Connector]]:
     Engine과 필요 시 Connector를 생성해 반환.
     호출 측에서 전역 보관 후 종료 시 정리
     """
-    if USE_CLOUD_SQL:
+    if settings.USE_CLOUD_SQL:
         # 필수 환경 변수 검증
         if not all([settings.INSTANCE_CONNECTION_NAME, settings.DB_USER, settings.DB_PASSWORD, settings.DB_NAME]):
-            raise ValueError(
-                "Cloud SQL 사용 시 INSTANCE_CONNECTION_NAME, DB_USER, DB_PASSWORD, DB_NAME이 모두 필요합니다."
-            )
+            raise CloudSQLConfigError()
 
         connector = Connector()
 
@@ -110,7 +106,8 @@ def get_engine() -> Engine:
 # 요청 단위 세션
 def get_db() -> Generator[Session, None, None]:
     init_db_if_needed()
-    assert SessionLocal is not None
+    if SessionLocal is None:
+        raise RuntimeError("SessionLocal 초기화 실패")
     db = SessionLocal()
     try:
         yield db
@@ -122,7 +119,8 @@ def get_db() -> Generator[Session, None, None]:
 @contextmanager
 def db_session() -> Generator[Session, None, None]:
     init_db_if_needed()
-    assert SessionLocal is not None
+    if SessionLocal is None:
+        raise RuntimeError("SessionLocal 초기화 실패")
     session = SessionLocal()
     try:
         yield session
@@ -138,3 +136,11 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown: yield 이후에 실행
     shutdown_db()
+
+class CloudSQLConfigError(Exception):
+    """Cloud SQL 설정 오류"""
+    def __init__(self):
+        super().__init__(
+            "Cloud SQL 사용 시 INSTANCE_CONNECTION_NAME, DB_USER, "
+            "DB_PASSWORD, DB_NAME이 모두 필요합니다."
+        )
