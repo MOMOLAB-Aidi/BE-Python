@@ -195,8 +195,6 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
         notes=notes,
         total_uf=total_uf,
     )
-    db.add(record)
-    db.flush()  # record.id 확보
 
     # 교환회차
     exchanges: List[Dict[str, Any]] = data.get("exchanges") or []
@@ -225,16 +223,21 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
         )
 
     try:
+        db.add(record)
+        db.flush()  # record.id 확보
         db.add_all(rows)
         db.commit()
     except IntegrityError as e:
         db.rollback()
-        raise HTTPException(
-                status_code=409,
-                detail = f"{record_date.isoformat()} 해당 기록이 이미 존재합니다.",
-        ) from e
-    db.refresh(record)
-    return record
+        # record_date 중복인 경우에만 명확한 메시지 제공
+        if "record_date" in str(e.orig):
+            detail = f"{record_date.isoformat()} 해당 기록이 이미 존재합니다."
+        else:
+            detail = "데이터 무결성 제약 조건을 위반했습니다."
+    raise HTTPException(
+        status_code=409,
+        detail = detail,
+    ) from e
 
 
 # Record 객체를 응답 JSON으로 직렬화
