@@ -1,14 +1,12 @@
 import atexit
-import os
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager, asynccontextmanager
 from typing import Optional, Tuple, TYPE_CHECKING
-from urllib.parse import quote_plus
 
 import sqlalchemy
 from fastapi import FastAPI
-from sqlalchemy import Column, DateTime, func, Engine
+from sqlalchemy import Column, DateTime, func, Engine, URL
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -76,12 +74,15 @@ def _create_engine_and_connector() -> Tuple[Engine, Optional["Connector"]]:
     port = int(getattr(settings, "DB_PORT", 5432) or 5432)
     driver = getattr(settings, "DB_DRIVER", "psycopg")  # psycopg 또는 pg8000
 
-    user = quote_plus(settings.DB_USER)
-    pwd = quote_plus(settings.DB_PASSWORD)
-    name = quote_plus(settings.DB_NAME)
-
-    dsn = f"postgresql+{driver}://{user}:{pwd}@{host}:{port}/{name}"
-    engine = sqlalchemy.create_engine(dsn, pool_pre_ping=True)
+    url = URL.create(
+        drivername = f"postgresql+{driver}",
+        username = settings.DB_USER,
+        password = settings.DB_PASSWORD,
+        host = host,
+        port = port,
+        database = settings.DB_NAME,
+    )
+    engine = sqlalchemy.create_engine(url, pool_pre_ping=True)
     return engine, None
 
 # 최초 접근 시 1회만 초기화
