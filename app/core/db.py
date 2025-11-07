@@ -3,20 +3,22 @@ import os
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager, asynccontextmanager
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TYPE_CHECKING
 
 import sqlalchemy
 from fastapi import FastAPI
-from google.cloud.sql.connector import Connector
 from sqlalchemy import Column, DateTime, func, Engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
 
+if TYPE_CHECKING:
+    from google.cloud.sql.connector import Connector
+
 # 전역 상태
 _db_lock = threading.Lock()
-_connector: Optional[Connector] = None
+_connector: Optional["Connector"] = None
 _engine: Optional[Engine] = None
 SessionLocal: Optional[sessionmaker] = None
 
@@ -28,12 +30,19 @@ class BaseEntity:
 # 모든 모델이 상속할 Base
 Base = declarative_base(cls=BaseEntity)
 
-def _create_engine_and_connector() -> Tuple[Engine, Optional[Connector]]:
+def _create_engine_and_connector() -> Tuple[Engine, _connector]:
     """
     Engine과 필요 시 Connector를 생성해 반환.
     호출 측에서 전역 보관 후 종료 시 정리
     """
     if settings.USE_CLOUD_SQL:
+        try:
+            from google.cloud.sql.connector import Connector
+        except ModuleNotFoundError as exc:
+            raise CloudSQLConfigError(
+                "Cloud SQL을 사용하려면 google-cloud-sql-connector가 설치되어야 합니다."
+            ) from exc
+
         # 필수 환경 변수 검증
         if not all([settings.INSTANCE_CONNECTION_NAME, settings.DB_USER, settings.DB_PASSWORD, settings.DB_NAME]):
             raise CloudSQLConfigError()
@@ -72,22 +81,18 @@ def init_db_if_needed() -> None:
             SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 
+# 애플리케이션 종료 시 자원 정리
 def shutdown_db() -> None:
-    """
-    애플리케이션 종료 시 자원 정리
-    - engine.dispose(): 풀 커넥션 정리
-    - connector.close(): 백그라운드 스레드/소켓 정리
-    """
     global _engine, _connector, SessionLocal
     with _db_lock:
         try:
             if _engine is not None:
-                _engine.dispose()
+                _engine.dispose() # 풀 커넥션 정리
         finally:
             _engine = None
             SessionLocal = None
         if _connector is not None:
-            _connector.close()
+            _connector.close() # 백그라운드 스레드/소켓 정리
             _connector = None
 
 
@@ -137,10 +142,12 @@ async def lifespan(app: FastAPI):
     # Shutdown: yield 이후에 실행
     shutdown_db()
 
+# Cloud SQL 설정 오류
 class CloudSQLConfigError(Exception):
-    """Cloud SQL 설정 오류"""
-    def __init__(self):
-        super().__init__(
-            "Cloud SQL 사용 시 INSTANCE_CONNECTION_NAME, DB_USER, "
-            "DB_PASSWORD, DB_NAME이 모두 필요합니다."
-        )
+    def __init__(self, message: Optional[str] = None):
+        if message is None:
+            message = (
+                "Cloud SQL 사용 시 INSTANCE_CONNECTION_NAME, DB_USER, "
+                "DB_PASSWORD, DB_NAME이 모두 필요합니다."
+            )
+        super().__init__(message)
