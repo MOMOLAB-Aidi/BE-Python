@@ -66,9 +66,7 @@ def _create_engine_and_connector() -> Tuple[Engine, Optional["Connector"]]:
 
     # 개별 값 기반 DSN
     if not (settings.DB_USER and settings.DB_PASSWORD and settings.DB_NAME):
-        raise RuntimeError(
-            "DB 연결 정보 부족: (Cloud SQL) USE_CLOUD_SQL=true 또는 DB_USER/DB_PASSWORD/DB_NAME을 설정하세요."
-        )
+        raise DatabaseConfigError()
 
     host = getattr(settings, "DB_HOST", None) or "localhost"
     port = int(getattr(settings, "DB_PORT", 5432) or 5432)
@@ -166,5 +164,16 @@ class CloudSQLConfigError(Exception):
             message = (
                 "Cloud SQL 사용 시 INSTANCE_CONNECTION_NAME, DB_USER, "
                 "DB_PASSWORD, DB_NAME이 모두 필요합니다."
+            )
+        super().__init__(message)
+
+
+# Database 연결 설정 오류
+class DatabaseConfigError(Exception):
+    def __init__(self, message: Optional[str] = None):
+        if message is None:
+            message = (
+                "DB 연결 정보 부족: (Cloud SQL) USE_CLOUD_SQL=true 또는 "
+                "DB_USER/DB_PASSWORD/DB_NAME을 설정하세요."
             )
         super().__init__(message)
