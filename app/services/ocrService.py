@@ -234,10 +234,13 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
             detail = f"{record_date.isoformat()} 해당 기록이 이미 존재합니다."
         else:
             detail = "데이터 무결성 제약 조건을 위반했습니다."
-    raise HTTPException(
-        status_code=409,
-        detail = detail,
-    ) from e
+        raise HTTPException(
+            status_code=409,
+            detail = detail,
+        ) from e
+
+    db.refresh(record)
+    return record
 
 
 # Record 객체를 응답 JSON으로 직렬화
