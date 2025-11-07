@@ -4,9 +4,11 @@ from datetime import date, datetime, time
 from typing import Optional, Dict, Any, List
 
 from dotenv import load_dotenv
+from fastapi import HTTPException
 from google import genai
 from base64 import b64encode
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db_models.record import Record
@@ -150,9 +152,8 @@ def _norm_dayweek(dw: Optional[str], d: date) -> str:
     return WEEK_KR[d.weekday()]
 
 
-# OCR 구조화 JSON을 받아 db에 저장 (단, 같은 기록 날짜의 레코드가 있으면 기존 데이터 삭제 후 재삽입 -> 추후에 기존 데이터는 유지하도록 로직 변경?)
+# OCR 구조화 JSON을 받아 db에 저장 (중복 날짜는 409 반환)
 def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
-
     record_date = _parse_date(data.get("record_date"))
     record_dw = _norm_dayweek(data.get("record_dw"), record_date)
 
@@ -163,7 +164,6 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
     fasting_glucose = _to_int_required(data.get("fasting_glucose"), "fasting_glucose")
     urine_count = _to_int_required(data.get("urine_count"), "urine_count")
 
-    # 추후에 turbidity_conflict, turbidity_marked 등을 추가하여 환자가 2개를 표시한 경우 / 표시하지 않은 경우 예외 처리
     turbidity = data.get("turbidity")
     if turbidity not in ("없음", "있음"):
         raise ValueError("turbidity는 '없음' 또는 '있음'이어야 합니다.")
@@ -171,48 +171,35 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
     notes = data.get("notes")
     total_uf = _to_int_required(data.get("total_uf"), "total_uf")
 
-    # 기존 레코드 조회
-    record = (
+    # 동일 날짜 존재 여부 체크
+    existing = (
         db.query(Record)
         .filter(Record.record_date == record_date)
         .one_or_none()
     )
-
-    # upsert
-    if record is None:
-        record = Record(
-            record_date=record_date,
-            record_dw=record_dw,
-            weight=weight,
-            systolic=systolic,
-            diastolic=diastolic,
-            fasting_glucose=fasting_glucose,
-            urine_count=urine_count,
-            turbidity=turbidity,
-            notes=notes,
-            total_uf=total_uf,
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{record_date.isoformat()} 해당 기록이 이미 존재합니다."
         )
-        db.add(record)
-        db.flush() # record.id 확보
 
-    else:
-        record.record_dw = record_dw
-        record.weight = weight
-        record.systolic = systolic
-        record.diastolic = diastolic
-        record.fasting_glucose = fasting_glucose
-        record.urine_count = urine_count
-        record.turbidity = turbidity
-        record.notes = notes
-        record.total_uf = total_uf
-
-        db.query(RecordExchange).filter(RecordExchange.record_id == record.id).delete() # 기존 데이터 삭제
+    record = Record(
+        record_date=record_date,
+        record_dw=record_dw,
+        weight=weight,
+        systolic=systolic,
+        diastolic=diastolic,
+        fasting_glucose=fasting_glucose,
+        urine_count=urine_count,
+        turbidity=turbidity,
+        notes=notes,
+        total_uf=total_uf,
+    )
 
     # 교환회차
     exchanges: List[Dict[str, Any]] = data.get("exchanges") or []
     if not exchanges:
         raise ValueError("exchanges가 비어 있습니다.")
-        pass
 
     rows: List[RecordExchange] = []
     for ex in exchanges:
@@ -235,10 +222,23 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
             )
         )
 
-    if rows:
+    try:
+        db.add(record)
+        db.flush()  # record.id 확보
         db.add_all(rows)
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        # record_date 중복인 경우에만 명확한 메시지 제공
+        if "record_date" in str(e.orig):
+            detail = f"{record_date.isoformat()} 해당 기록이 이미 존재합니다."
+        else:
+            detail = "데이터 무결성 제약 조건을 위반했습니다."
+        raise HTTPException(
+            status_code=409,
+            detail = detail,
+        ) from e
 
-    db.commit()
     db.refresh(record)
     return record
 

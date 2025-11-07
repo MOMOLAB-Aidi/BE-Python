@@ -1,5 +1,6 @@
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response
 from sqlalchemy import asc
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date
 
@@ -12,7 +13,8 @@ from app.db_models.record_exchange import RecordExchange
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, _record_to_dict
-from app.services.recordService import rec_to_dict, apply_record_patch, upsert_exchange, ex_to_dict
+from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
+    patch_exchange, create_record_common
 
 router = APIRouter()
 
@@ -22,30 +24,19 @@ router = APIRouter()
     "/api/v1/records",
     tags=["복막투석기록-공통"],
     summary="공통 정보 생성",
-    description="회차 없이 공통 정보만 생성합니다.",
+    description="회차 없이 공통 정보만 생성합니다. 같은 날짜가 이미 있으면 409를 반환합니다.",
     status_code=204,
     responses={204: {"description": "성공입니다"}},
 )
-def create_record_common(payload: RecordCommonCreate, db: Session = Depends(get_db)):
-    d = payload.record_date or _date.today()
+def create_record_common_route(payload: RecordCommonCreate, db: Session = Depends(get_db)):
+    p = payload.model_dump(exclude_unset=True)
+    try:
+        create_record_common(db, p, unique_by_date=True)
+        return Response(status_code=204)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="해당 날짜의 기록이 이미 존재합니다.")
 
-    rec = Record(
-        record_date=d,
-        record_dw=payload.record_dw,
-        weight=payload.weight,
-        systolic=payload.systolic,
-        diastolic=payload.diastolic,
-        fasting_glucose=payload.fasting_glucose,
-        urine_count=payload.urine_count,
-        turbidity=payload.turbidity,
-        notes=payload.notes,
-        total_uf=payload.total_uf, # 합계는 선택 입력(후입력 가능)
-    )
-
-    db.add(rec)
-    db.commit()
-    db.refresh(rec)
-    return Response(status_code=204)
 
 # 복막투석기록 공통 정보 수정 api
 @router.patch(
@@ -62,6 +53,21 @@ def patch_record_common(rec_id: int, payload: RecordCommonPatch, db: Session = D
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
 
     patch = payload.model_dump(exclude_unset=True)
+
+    # record_date가 변경되는 경우, 동일 날짜의 다른 레코드가 있는지 검사
+    if "record_date" in patch and patch["record_date"] is not None:
+        new_date = patch["record_date"]
+        if isinstance(new_date, str):
+            new_date = _date.fromisoformat(new_date)
+        if new_date != rec.record_date:
+            exists = (
+                db.query(Record.id)
+                .filter(Record.record_date == new_date, Record.id != rec.id)
+                .first()
+            )
+            if exists:
+                raise HTTPException(status_code=409, detail=f"{new_date.isoformat()} 기록이 이미 존재합니다.")
+
     apply_record_patch(rec, patch)
 
     db.add(rec)
@@ -84,7 +90,7 @@ def upsert_record_exchange(rec_id: int, payload: RecordExchangeCreate, db: Sessi
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
 
     p = payload.model_dump()
-    upsert_exchange(rec, p)
+    create_exchange(rec, p)
 
     db.add(rec)
     db.commit()
@@ -108,7 +114,7 @@ def patch_record_exchange(rec_id: int, exchange_no: int, payload: RecordExchange
     p = payload.model_dump(exclude_unset=True)
     p["exchange_no"] = p.get("exchange_no", exchange_no)
 
-    upsert_exchange(rec, p)
+    patch_exchange(rec, p)
 
     db.add(rec)
     db.commit()
@@ -193,6 +199,8 @@ def ocr_and_save(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     except OcrError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except ValueError as e:
         # save_pdrecord_json 내부 검증(필수값, 형식) 에러
         raise HTTPException(status_code=422, detail=str(e))
