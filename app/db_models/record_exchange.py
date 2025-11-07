@@ -2,11 +2,10 @@ from sqlalchemy import Column, Integer, ForeignKey, Time, Index, Float
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
-from app.db_models.base_entity import TimestampMixin
 
 
 # 복막투석기록일지 - 회차별 데이터 정의 (같은 날짜의 여러 교환 회차)
-class RecordExchange(Base, TimestampMixin):
+class RecordExchange(Base):
     __tablename__ = "record_exchange"
 
     id = Column(Integer, primary_key=True)

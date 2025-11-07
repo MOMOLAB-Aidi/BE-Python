@@ -30,7 +30,7 @@ class BaseEntity:
 # 모든 모델이 상속할 Base
 Base = declarative_base(cls=BaseEntity)
 
-def _create_engine_and_connector() -> Tuple[Engine, _connector]:
+def _create_engine_and_connector() -> Tuple[Engine, Optional["Connector"]]:
     """
     Engine과 필요 시 Connector를 생성해 반환.
     호출 측에서 전역 보관 후 종료 시 정리
@@ -92,8 +92,10 @@ def shutdown_db() -> None:
             _engine = None
             SessionLocal = None
         if _connector is not None:
-            _connector.close() # 백그라운드 스레드/소켓 정리
-            _connector = None
+            try:
+                _connector.close()
+            finally:
+                _connector = None
 
 
 # 프로세스 종료 시 비상 정리
