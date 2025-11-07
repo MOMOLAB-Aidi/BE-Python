@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     DB_USER: Optional[str] = None
     DB_PASSWORD: Optional[str] = None
     DB_NAME: Optional[str] = None
+    INSTANCE_CONNECTION_NAME: Optional[str] = None
 
     GOOGLE_GENAI_USE_VERTEXAI: bool = False
 

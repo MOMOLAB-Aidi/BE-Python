@@ -14,15 +14,14 @@ USE_CLOUD_SQL = os.getenv("USE_CLOUD_SQL", "0") == "1"
 def get_engine():
     if USE_CLOUD_SQL:
         # Cloud SQL 필수 환경 변수 검증
-        instance_name = os.getenv("INSTANCE_CONNECTION_NAME")
-        if not all([instance_name, settings.DB_USER, settings.DB_PASSWORD, settings.DB_NAME]):
+        if not all([settings.INSTANCE_CONNECTION_NAME, settings.DB_USER, settings.DB_PASSWORD, settings.DB_NAME]):
             raise ValueError("Cloud SQL 사용 시 INSTANCE_CONNECTION_NAME, DB_USER, DB_PASSWORD, DB_NAME이 모두 필요합니다.")
         # Cloud Run/로컬에서 Cloud SQL을 쓸 때만 로드
         connector = Connector()
 
         def getconn():
             return connector.connect(
-                instance_name,
+                settings.INSTANCE_CONNECTION_NAME,
                 "pg8000",
                 user=settings.DB_USER,
                 password=settings.DB_PASSWORD,
