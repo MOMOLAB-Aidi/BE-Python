@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from google import genai
 from base64 import b64encode
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db_models.record import Record
@@ -223,8 +224,15 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
             )
         )
 
-    db.add_all(rows)
-    db.commit()
+    try:
+        db.add_all(rows)
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+                status_code=409,
+                detail = f"{record_date.isoformat()} 해당 기록이 이미 존재합니다.",
+        ) from e
     db.refresh(record)
     return record
 
