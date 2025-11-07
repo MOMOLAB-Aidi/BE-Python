@@ -1,10 +1,12 @@
 import atexit
 import os
+import threading
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from typing import Optional, Tuple
 
 import sqlalchemy
+from fastapi import FastAPI
 from google.cloud.sql.connector import Connector
 from sqlalchemy import Column, DateTime, func, Engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -15,6 +17,7 @@ from app.core.config import settings
 USE_CLOUD_SQL = os.getenv("USE_CLOUD_SQL", "0") == "1"
 
 # 전역 상태
+_db_lock = threading.Lock()
 _connector: Optional[Connector] = None
 _engine: Optional[Engine] = None
 SessionLocal: Optional[sessionmaker] = None
@@ -65,9 +68,12 @@ def _create_engine_and_connector() -> Tuple[Engine, Optional[Connector]]:
 # 최초 접근 시 1회만 초기화
 def init_db_if_needed() -> None:
     global _engine, _connector, SessionLocal
-    if _engine is None:
-        _engine, _connector = _create_engine_and_connector()
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+    if _engine is not None:
+        return
+    with _db_lock:
+        if _engine is None:
+            _engine, _connector = _create_engine_and_connector()
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
 
 def shutdown_db() -> None:
@@ -77,16 +83,16 @@ def shutdown_db() -> None:
     - connector.close(): 백그라운드 스레드/소켓 정리
     """
     global _engine, _connector, SessionLocal
-    try:
-        if _engine is not None:
-            _engine.dispose()
-    finally:
-        _engine = None
-        SessionLocal = None
-
-    if _connector is not None:
-        _connector.close()
-        _connector = None
+    with _db_lock:
+        try:
+            if _engine is not None:
+                _engine.dispose()
+        finally:
+            _engine = None
+            SessionLocal = None
+        if _connector is not None:
+            _connector.close()
+            _connector = None
 
 
 # 프로세스 종료 시 비상 정리
@@ -96,7 +102,8 @@ atexit.register(shutdown_db)
 # 외부에서 엔진이 필요할 때 호출
 def get_engine() -> Engine:
     init_db_if_needed()
-    assert _engine is not None
+    if _engine is None:
+        raise RuntimeError("데이터베이스 엔진 초기화 실패")
     return _engine
 
 
@@ -124,12 +131,10 @@ def db_session() -> Generator[Session, None, None]:
 
 
 # FastAPI와 생명주기 연동
-def register_fastapi_events(app) -> None:
-    @app.on_event("startup")
-    async def _startup():
-        # 필요 시 선초기화
-        init_db_if_needed()
-
-    @app.on_event("shutdown")
-    async def _shutdown():
-        shutdown_db()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: yield 이전에 실행
+    init_db_if_needed()
+    yield
+    # Shutdown: yield 이후에 실행
+    shutdown_db()
