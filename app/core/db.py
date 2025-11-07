@@ -69,8 +69,12 @@ def _create_engine_and_connector() -> Tuple[Engine, Optional["Connector"]]:
         raise DatabaseConfigError()
 
     host = getattr(settings, "DB_HOST", None) or "localhost"
-    port = int(getattr(settings, "DB_PORT", 5432) or 5432)
+    port = int(getattr(settings, "DB_PORT", None) or 5432)
+
+    SUPPORTED_DRIVERS = {"psycopg", "pg8000", "psycopg2"}
     driver = getattr(settings, "DB_DRIVER", "psycopg")  # psycopg 또는 pg8000
+    if driver not in SUPPORTED_DRIVERS:
+        raise DatabaseConfigError(f"지원하지 않는 DB_DRIVER: {driver}. 지원 드라이버: {SUPPORTED_DRIVERS}")
 
     url = URL.create(
         drivername = f"postgresql+{driver}",
@@ -173,7 +177,7 @@ class DatabaseConfigError(Exception):
     def __init__(self, message: Optional[str] = None):
         if message is None:
             message = (
-                "DB 연결 정보 부족: (Cloud SQL) USE_CLOUD_SQL=true 또는 "
-                "DB_USER/DB_PASSWORD/DB_NAME을 설정하세요."
+                "DB 연결 정보 부족: DB_USER, DB_PASSWORD, DB_NAME을 모두 설정하세요. "
+                "Cloud SQL 사용 시에는 USE_CLOUD_SQL=true와 INSTANCE_CONNECTION_NAME도 필요합니다."
             )
         super().__init__(message)
