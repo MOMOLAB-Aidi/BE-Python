@@ -11,8 +11,9 @@ from app.db_models.record import Record
 from app.db_models.record_exchange import RecordExchange
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
-from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, _record_to_dict
-from app.services.recordService import rec_to_dict, apply_record_patch, upsert_exchange, ex_to_dict
+from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json
+from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
+    patch_exchange
 
 router = APIRouter()
 
@@ -39,7 +40,7 @@ def create_record_common(payload: RecordCommonCreate, db: Session = Depends(get_
         urine_count=payload.urine_count,
         turbidity=payload.turbidity,
         notes=payload.notes,
-        total_uf=payload.total_uf, # 합계는 선택 입력(후입력 가능)
+        total_uf=payload.total_uf,
     )
 
     db.add(rec)
@@ -84,7 +85,7 @@ def upsert_record_exchange(rec_id: int, payload: RecordExchangeCreate, db: Sessi
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
 
     p = payload.model_dump()
-    upsert_exchange(rec, p)
+    create_exchange(rec, p)
 
     db.add(rec)
     db.commit()
@@ -108,7 +109,7 @@ def patch_record_exchange(rec_id: int, exchange_no: int, payload: RecordExchange
     p = payload.model_dump(exclude_unset=True)
     p["exchange_no"] = p.get("exchange_no", exchange_no)
 
-    upsert_exchange(rec, p)
+    patch_exchange(rec, p)
 
     db.add(rec)
     db.commit()
@@ -193,6 +194,8 @@ def ocr_and_save(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     except OcrError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except ValueError as e:
         # save_pdrecord_json 내부 검증(필수값, 형식) 에러
         raise HTTPException(status_code=422, detail=str(e))
