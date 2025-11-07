@@ -1,5 +1,4 @@
 import atexit
-import os
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager, asynccontextmanager
@@ -7,7 +6,7 @@ from typing import Optional, Tuple, TYPE_CHECKING
 
 import sqlalchemy
 from fastapi import FastAPI
-from sqlalchemy import Column, DateTime, func, Engine
+from sqlalchemy import Column, DateTime, func, Engine, URL
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -65,9 +64,30 @@ def _create_engine_and_connector() -> Tuple[Engine, Optional["Connector"]]:
         )
         return engine, connector
 
-    # 로컬/테스트 DB
-    db_url = settings.DATABASE_URL or "sqlite:///./test.db"
-    engine = sqlalchemy.create_engine(db_url, pool_pre_ping=True)
+    # 개별 값 기반 DSN
+    if not (settings.DB_USER and settings.DB_PASSWORD and settings.DB_NAME):
+        raise DatabaseConfigError()
+
+    host = getattr(settings, "DB_HOST", None) or "localhost"
+    port = int(getattr(settings, "DB_PORT", None) or 5432)
+
+    SUPPORTED_DRIVERS = {"psycopg", "pg8000", "psycopg2"}
+    raw_driver = getattr(settings, "DB_DRIVER", "psycopg")
+    driver = raw_driver.lower()
+    if driver not in SUPPORTED_DRIVERS:
+        raise DatabaseConfigError(
+            f"지원하지 않는 DB_DRIVER: {raw_driver}. 지원 드라이버: {SUPPORTED_DRIVERS}"
+        )
+
+    url = URL.create(
+        drivername = f"postgresql+{driver}",
+        username = settings.DB_USER,
+        password = settings.DB_PASSWORD,
+        host = host,
+        port = port,
+        database = settings.DB_NAME,
+    )
+    engine = sqlalchemy.create_engine(url, pool_pre_ping=True)
     return engine, None
 
 # 최초 접근 시 1회만 초기화
@@ -151,5 +171,16 @@ class CloudSQLConfigError(Exception):
             message = (
                 "Cloud SQL 사용 시 INSTANCE_CONNECTION_NAME, DB_USER, "
                 "DB_PASSWORD, DB_NAME이 모두 필요합니다."
+            )
+        super().__init__(message)
+
+
+# Database 연결 설정 오류
+class DatabaseConfigError(Exception):
+    def __init__(self, message: Optional[str] = None):
+        if message is None:
+            message = (
+                "DB 연결 정보 부족: DB_USER, DB_PASSWORD, DB_NAME을 모두 설정하세요. "
+                "Cloud SQL 사용 시에는 USE_CLOUD_SQL=true와 INSTANCE_CONNECTION_NAME도 필요합니다."
             )
         super().__init__(message)

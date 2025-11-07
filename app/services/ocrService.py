@@ -201,43 +201,40 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
     if not exchanges:
         raise ValueError("exchanges가 비어 있습니다.")
 
-    rows: List[RecordExchange] = []
-    for ex in exchanges:
-        ex_no = _to_int_required(ex.get("exchange_no"), "exchanges[].exchange_no")
-        ex_time = _parse_time_hhmm(ex.get("exchange_time"))
-        drain_v = _to_int_required(ex.get("drain_volume"), "exchanges[].drain_volume")
-        fill_v = _to_int_required(ex.get("fill_volume"), "exchanges[].fill_volume")
-        fill_c = _to_float_required(ex.get("fill_concentration"), "exchanges[].fill_concentration")
-        uf = _to_int_required(ex.get("uf"), "exchanges[].uf")
-
-        rows.append(
-            RecordExchange(
-                record_id=record.id,
-                exchange_no=ex_no,
-                exchange_time=ex_time,
-                drain_volume=drain_v,
-                fill_volume=fill_v,
-                fill_concentration=fill_c,
-                uf=uf,
-            )
-        )
-
     try:
         db.add(record)
         db.flush()  # record.id 확보
-        db.add_all(rows)
+
+        record.exchanges = []
+        for ex in exchanges:
+            ex_no = _to_int_required(ex.get("exchange_no"), "exchanges[].exchange_no")
+            ex_time = _parse_time_hhmm(ex.get("exchange_time"))
+            drain_v = _to_int_required(ex.get("drain_volume"), "exchanges[].drain_volume")
+            fill_v = _to_int_required(ex.get("fill_volume"), "exchanges[].fill_volume")
+            fill_c = _to_float_required(ex.get("fill_concentration"), "exchanges[].fill_concentration")
+            uf = _to_int_required(ex.get("uf"), "exchanges[].uf")
+
+            record.exchanges.append(
+                RecordExchange(
+                    exchange_no=ex_no,
+                    exchange_time=ex_time,
+                    drain_volume=drain_v,
+                    fill_volume=fill_v,
+                    fill_concentration=fill_c,
+                    uf=uf,
+                )
+            )
+
         db.commit()
     except IntegrityError as e:
         db.rollback()
-        # record_date 중복인 경우에만 명확한 메시지 제공
-        if "record_date" in str(e.orig):
-            detail = f"{record_date.isoformat()} 해당 기록이 이미 존재합니다."
-        else:
-            detail = "데이터 무결성 제약 조건을 위반했습니다."
-        raise HTTPException(
-            status_code=409,
-            detail = detail,
-        ) from e
+        # 유니크 제약 등으로 중복 발생 시 메시지 보정
+        detail = (
+            f"{record_date.isoformat()} 해당 기록이 이미 존재합니다."
+            if "record_date" in str(getattr(e, "orig", e))
+            else "데이터 무결성 제약 조건을 위반했습니다."
+        )
+        raise HTTPException(status_code=409, detail=detail) from e
 
     db.refresh(record)
     return record
