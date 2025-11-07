@@ -2,13 +2,12 @@ from sqlalchemy import Column, Integer, Date, Float, Enum, Text
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
-from app.db_models.base_entity import TimestampMixin
 
 # 복막투석기록일지 - 공통 데이터 정의
 TurbidityEnum = Enum("없음", "있음", name="turbidity_enum")
 DayWeekEnum = Enum("월", "화", "수", "목", "금", "토", "일", name="dayweek_enum")
 
-class Record(Base, TimestampMixin):
+class Record(Base):
     __tablename__ = "record"
 
     id = Column(Integer, primary_key=True, index=True)

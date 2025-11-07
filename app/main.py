@@ -6,7 +6,7 @@ from starlette.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.db import engine, Base
+from app.core.db import Base, get_engine, shutdown_db
 from app.api.routes import router as api_router
 
 import uvicorn
@@ -29,13 +29,14 @@ middleware = [
 async def lifespan(app: FastAPI):
 
     # 앱 시작 시 테이블 생성
+    engine = get_engine()
     Base.metadata.create_all(bind=engine)
 
     try:
         yield
     finally:
-        # 커넥션 풀 정리
-        engine.dispose()
+        # 커넥션 풀 + Cloud SQL Connector 백그라운드 스레드 정리
+        shutdown_db()
 
 
 app = FastAPI(
