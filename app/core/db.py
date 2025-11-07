@@ -72,9 +72,12 @@ def _create_engine_and_connector() -> Tuple[Engine, Optional["Connector"]]:
     port = int(getattr(settings, "DB_PORT", None) or 5432)
 
     SUPPORTED_DRIVERS = {"psycopg", "pg8000", "psycopg2"}
-    driver = getattr(settings, "DB_DRIVER", "psycopg")  # psycopg 또는 pg8000
+    raw_driver = getattr(settings, "DB_DRIVER", "psycopg")
+    driver = raw_driver.lower()
     if driver not in SUPPORTED_DRIVERS:
-        raise DatabaseConfigError(f"지원하지 않는 DB_DRIVER: {driver}. 지원 드라이버: {SUPPORTED_DRIVERS}")
+        raise DatabaseConfigError(
+            f"지원하지 않는 DB_DRIVER: {raw_driver}. 지원 드라이버: {SUPPORTED_DRIVERS}"
+        )
 
     url = URL.create(
         drivername = f"postgresql+{driver}",
