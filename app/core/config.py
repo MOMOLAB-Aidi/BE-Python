@@ -16,7 +16,10 @@ class Settings(BaseSettings):
         if not s:
             return []
         if s.startswith("["):
-            return json.loads(s)
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in ALLOWED_ORIGINS_RAW: {e}")
         return [x.strip() for x in s.split(",") if x.strip()]
 
     DATABASE_URL: Optional[str] = None

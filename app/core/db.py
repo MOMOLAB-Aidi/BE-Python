@@ -9,27 +9,29 @@ from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
 
-SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
-
 USE_CLOUD_SQL = os.getenv("USE_CLOUD_SQL", "0") == "1"
 
 def get_engine():
     if USE_CLOUD_SQL:
-        # Cloud Run/로컬에서 Cloud SQL을 정말 쓸 때만 로드
+        # Cloud SQL 필수 환경 변수 검증
+        instance_name = os.getenv("INSTANCE_CONNECTION_NAME")
+        if not all([instance_name, settings.DB_USER, settings.DB_PASSWORD, settings.DB_NAME]):
+            raise ValueError("Cloud SQL 사용 시 INSTANCE_CONNECTION_NAME, DB_USER, DB_PASSWORD, DB_NAME이 모두 필요합니다.")
+        # Cloud Run/로컬에서 Cloud SQL을 쓸 때만 로드
         connector = Connector()
 
         def getconn():
             return connector.connect(
-                os.environ["INSTANCE_CONNECTION_NAME"],
+                instance_name,
                 "pg8000",
-                user=os.environ["DB_USER"],
-                password=os.environ["DB_PASSWORD"],
-                db=os.environ["DB_NAME"],
+                user=settings.DB_USER,
+                password=settings.DB_PASSWORD,
+                db = settings.DB_NAME,
             )
         return sqlalchemy.create_engine("postgresql+pg8000://", creator=getconn, pool_pre_ping=True)
     else:
         # 로컬/테스트는 SQLite 등으로
-        db_url = os.getenv("DATABASE_URL", "sqlite:///./test.db")
+        db_url = settings.DATABASE_URL or "sqlite:///./test.db"
         return sqlalchemy.create_engine(db_url, pool_pre_ping=True)
 
 engine = get_engine()
