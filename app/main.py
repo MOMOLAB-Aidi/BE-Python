@@ -1,17 +1,17 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from starlette.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.core.db import engine, Base
 from app.api.routes import router as api_router
 
 import uvicorn
 
-ALLOWED_ORIGINS = [
-    "http://127.0.0.1:8000",
-]
+ALLOWED_ORIGINS = settings.ALLOWED_ORIGINS
 
 # CORS
 middleware = [
@@ -58,4 +58,5 @@ def read_root():
 
 # 로컬 실행 진입점
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port)
