@@ -4,6 +4,7 @@ import threading
 from collections.abc import Generator
 from contextlib import contextmanager, asynccontextmanager
 from typing import Optional, Tuple, TYPE_CHECKING
+from urllib.parse import quote_plus
 
 import sqlalchemy
 from fastapi import FastAPI
@@ -65,9 +66,22 @@ def _create_engine_and_connector() -> Tuple[Engine, Optional["Connector"]]:
         )
         return engine, connector
 
-    # 로컬/테스트 DB
-    db_url = settings.DATABASE_URL or "sqlite:///./test.db"
-    engine = sqlalchemy.create_engine(db_url, pool_pre_ping=True)
+    # 개별 값 기반 DSN
+    if not (settings.DB_USER and settings.DB_PASSWORD and settings.DB_NAME):
+        raise RuntimeError(
+            "DB 연결 정보 부족: (Cloud SQL) USE_CLOUD_SQL=true 또는 DB_USER/DB_PASSWORD/DB_NAME을 설정하세요."
+        )
+
+    host = getattr(settings, "DB_HOST", None) or "localhost"
+    port = int(getattr(settings, "DB_PORT", 5432) or 5432)
+    driver = getattr(settings, "DB_DRIVER", "psycopg")  # psycopg 또는 pg8000
+
+    user = quote_plus(settings.DB_USER)
+    pwd = quote_plus(settings.DB_PASSWORD)
+    name = quote_plus(settings.DB_NAME)
+
+    dsn = f"postgresql+{driver}://{user}:{pwd}@{host}:{port}/{name}"
+    engine = sqlalchemy.create_engine(dsn, pool_pre_ping=True)
     return engine, None
 
 # 최초 접근 시 1회만 초기화
