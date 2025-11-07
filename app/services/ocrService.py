@@ -227,3 +227,35 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
     db.commit()
     db.refresh(record)
     return record
+
+
+# Record 객체를 응답 JSON으로 직렬화
+def _record_to_dict(rec) -> dict:
+    def _t(t):
+        return t.strftime("%H:%M") if t else None
+
+    return {
+        "id": rec.id,
+        "record_date": rec.record_date.isoformat(),
+        "record_dw": rec.record_dw,
+        "weight": rec.weight,
+        "systolic": rec.systolic,
+        "diastolic": rec.diastolic,
+        "fasting_glucose": rec.fasting_glucose,
+        "urine_count": rec.urine_count,
+        "turbidity": rec.turbidity,
+        "notes": rec.notes,
+        "total_uf": rec.total_uf,
+        "exchanges": [
+            {
+                "id": ex.id,
+                "exchange_no": ex.exchange_no,
+                "exchange_time": _t(ex.exchange_time),
+                "drain_volume": ex.drain_volume,
+                "fill_volume": ex.fill_volume,
+                "fill_concentration": ex.fill_concentration,
+                "uf": ex.uf,
+            }
+            for ex in (rec.exchanges or [])
+        ],
+    }

@@ -1,8 +1,10 @@
 import re
 from datetime import time as dtime, date
-from typing import Dict, Any, Optional  # Optional 추가
+from typing import Dict, Any, Optional
+from datetime import date as _date
 
 from fastapi import HTTPException
+from sqlalchemy.orm import Session
 
 from app.db_models.record import Record
 from app.db_models.record_exchange import RecordExchange
@@ -25,7 +27,7 @@ def parse_time(s: str) -> dtime:
         raise ValueError("시간 범위 오류(0~23시, 0~59분)")
     return dtime(hour=hh, minute=mm)
 
-# 범용: payload에 키가 있고 값이 None이 아닐 때만 fn을 적용해 target.attr에 대입
+# payload에 키가 있고 값이 None이 아닐 때만 fn을 적용해 target.attr에 대입
 def _apply_if_present(
     target: Any,
     payload: Dict[str, Any],
@@ -87,10 +89,52 @@ def rec_to_dict(r: Record) -> Dict[str, Any]:
         "exchanges": [ex_to_dict(e) for e in (r.exchanges or [])],
     }
 
-# =========================
-# 공통 정보 패치
-# =========================
 
+# 필수 값 체크
+def _require_fields_for_create(rec: Record):
+    vrng(rec.record_date is not None, "record_date는 필수입니다.")
+    vrng(rec.record_dw in {"월","화","수","목","금","토","일"}, "record_dw는 월~일 중 하나여야 합니다.")
+    vrng(rec.weight is not None, "weight는 필수입니다.")
+    vrng(rec.systolic is not None, "systolic는 필수입니다.")
+    vrng(rec.diastolic is not None, "diastolic는 필수입니다.")
+    vrng(rec.fasting_glucose is not None, "fasting_glucose는 필수입니다.")
+    vrng(rec.urine_count is not None, "urine_count는 필수입니다.")
+    vrng(rec.turbidity in {"없음","있음"}, "turbidity는 '없음' 또는 '있음'이어야 합니다.")
+    vrng(rec.total_uf is not None, "total_uf는 필수입니다.")
+
+
+# 공통 정보 생성용 객체 빌더
+def create_record_common_obj(p: Dict[str, Any]) -> Record:
+    rec = Record()
+    # 날짜 미지정 시 오늘
+    if "record_date" not in p or p["record_date"] is None:
+        p = {**p, "record_date": _date.today()}
+
+    apply_record_patch(rec, p)
+    _require_fields_for_create(rec)
+    return rec
+
+
+# 공통 정보 생성
+def create_record_common(db: Session, p: Dict[str, Any], *, unique_by_date: bool = True) -> Record:
+    rec = create_record_common_obj(p)
+
+    if unique_by_date:
+        existing = (
+            db.query(Record)
+            .filter(Record.record_date == rec.record_date)
+            .one_or_none()
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail=f"{rec.record_date.isoformat()} 기록이 이미 존재합니다.")
+
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
+# 공통 정보 수정
 def apply_record_patch(rec: Record, p: Dict[str, Any]) -> None:
     if "record_date" in p and p["record_date"] is not None:
         rd = p["record_date"]
@@ -132,10 +176,10 @@ def apply_record_patch(rec: Record, p: Dict[str, Any]) -> None:
     if "total_uf" in p and p["total_uf"] is not None:
         rec.total_uf = _as_int_in(p["total_uf"], -5000, 5000, "total_uf")
 
+
 # =========================
 # 회차 공통 처리
 # =========================
-
 def _require_exchange_no(p: Dict[str, Any]) -> int:
     vrng("exchange_no" in p and p["exchange_no"] is not None, "회차(개별)에는 exchange_no가 필요합니다.")
     ex_no = int(p["exchange_no"])
@@ -166,6 +210,7 @@ def patch_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
     _apply_exchange_fields(target, p)
     return target
 
+# 회차 정보 생성
 def create_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
     ex_no = _require_exchange_no(p)
     if find_exchange(rec, ex_no) is not None:
