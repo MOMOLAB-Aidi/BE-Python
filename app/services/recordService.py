@@ -19,13 +19,24 @@ def vrng(cond: bool, msg: str):
 
 def parse_time(s: str) -> dtime:
     s = (s or "").strip().replace("시", ":").replace(".", ":")
-    m = re.match(r"^\s*(\d{1,2})\s*:\s*(\d{2})\s*$", s)
+    # HH:MM 또는 HH:MM:SS
+    m = re.match(r"^\s*(\d{1,2})\s*:\s*(\d{2})(?::\s*(\d{2}))?\s*$", s)
     if not m:
-        raise ValueError("시간은 HH:MM 형식이어야 합니다.")
+        raise ValueError("시간은 HH:MM 또는 HH:MM:SS 형식이어야 합니다.")
     hh, mm = int(m.group(1)), int(m.group(2))
-    if not (0 <= hh <= 23 and 0 <= mm <= 59):
-        raise ValueError("시간 범위 오류(0~23시, 0~59분)")
-    return dtime(hour=hh, minute=mm)
+    ss = int(m.group(3)) if m.group(3) is not None else 0
+    if not (0 <= hh <= 23 and 0 <= mm <= 59 and 0 <= ss <= 59):
+        raise ValueError("시간 범위 오류(0~23시, 0~59분, 0~59초)")
+    return dtime(hour=hh, minute=mm, second=ss)
+
+
+# 다음 회차 번호 계산
+def _next_exchange_no(rec: Record) -> int:
+    exists = [e.exchange_no for e in (rec.exchanges or [])]
+    next_no = (max(exists) + 1) if exists else 1
+    vrng(1 <= next_no <= 12, "최대 12회차까지 등록 가능합니다.")
+    return next_no
+
 
 # payload에 키가 있고 값이 None이 아닐 때만 fn을 적용해 target.attr에 대입
 def _apply_if_present(
@@ -39,9 +50,8 @@ def _apply_if_present(
         value = fn(payload[key])
         setattr(target, attr or key, value)
 
-# =========================
-# 검증 헬퍼 메소드
-# =========================
+
+# 검증
 def _as_int_in(v: Any, lo: int, hi: int, label: str) -> int:
     try:
         iv = int(v)
@@ -212,7 +222,8 @@ def patch_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
 
 # 회차 정보 생성
 def create_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
-    ex_no = _require_exchange_no(p)
+    ex_no = _next_exchange_no(rec)
+
     if find_exchange(rec, ex_no) is not None:
         raise HTTPException(status_code=409, detail=f"{ex_no}회차가 이미 존재합니다.")
 
