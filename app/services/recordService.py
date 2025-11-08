@@ -139,6 +139,7 @@ def create_record_common(db: Session, p: Dict[str, Any], *, unique_by_date: bool
             raise HTTPException(status_code=409, detail=f"{rec.record_date.isoformat()} 기록이 이미 존재합니다.")
 
     db.add(rec)
+    db.flush()
     db.commit()
     db.refresh(rec)
     return rec

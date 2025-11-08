@@ -1,4 +1,5 @@
-from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response
+from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status
+from pydantic import BaseModel
 from sqlalchemy import asc
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -19,20 +20,24 @@ from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_di
 router = APIRouter()
 
 
+class RecordCreateResponse(BaseModel):
+    id: int
+
+
 # 복막투석기록 공통 정보 생성 api
 @router.post(
     "/api/v1/records",
     tags=["복막투석기록-공통"],
     summary="공통 정보 생성",
     description="회차 없이 공통 정보만 생성합니다. 같은 날짜가 이미 있으면 409를 반환합니다.",
-    status_code=204,
-    responses={204: {"description": "성공입니다"}},
+    status_code=status.HTTP_201_CREATED,
+    response_model=RecordCreateResponse,
 )
 def create_record_common_route(payload: RecordCommonCreate, db: Session = Depends(get_db)):
     p = payload.model_dump(exclude_unset=True)
     try:
-        create_record_common(db, p, unique_by_date=True)
-        return Response(status_code=204)
+        rec = create_record_common(db, p, unique_by_date=True)
+        return RecordCreateResponse(id=rec.id)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="해당 날짜의 기록이 이미 존재합니다.")
