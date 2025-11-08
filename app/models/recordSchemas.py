@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, constr
 
 # 오늘 기본값 예시 구성
 today = datetime.now()
@@ -8,6 +8,9 @@ today_str = today.strftime("%Y-%m-%d")
 time_str = today.strftime("%H:%M")
 weekday_kr = ["월", "화", "수", "목", "금", "토", "일"]
 today_dw = weekday_kr[today.weekday()]
+
+# 입력되는 시간 형식: "HH:MM" 또는 "HH:MM:SS"
+TimeStr = constr(pattern=r"^\d{2}:\d{2}(:\d{2})?$")
 
 class ORMBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -20,8 +23,7 @@ class RecordExchangeCreate(ORMBase):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "exchange_no": 1,
-                "exchange_time": time_str,
+                "exchange_time": "09:00",
                 "drain_volume": 2100,
                 "fill_volume": 2000,
                 "fill_concentration": 2.5,
@@ -29,8 +31,8 @@ class RecordExchangeCreate(ORMBase):
             }
         }
     )
-    exchange_no: int = Field(..., ge=1, le=12, description="구분(회차)")
-    exchange_time: str = Field(..., description="HH:MM")
+    exchange_no: Optional[int] = Field(None, ge=1, le=12, description="구분(회차)", json_schema_extra={"readOnly": True})
+    exchange_time: TimeStr = Field(..., description="HH:MM 또는 HH:MM:SS")
     drain_volume: int = Field(..., ge=0, le=6000)
     fill_volume: int = Field(..., ge=0, le=6000)
     fill_concentration: float = Field(..., ge=0, le=100, description="예: 1.5, 2.5, 4.25")
@@ -41,12 +43,11 @@ class RecordExchangePatch(ORMBase):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "exchange_time": time_str,
+                "exchange_time": "10:30",
                 "drain_volume": 2200
             }
         }
     )
-    exchange_no: Optional[int] = Field(None, ge=1, le=12)
     exchange_time: Optional[str] = None
     drain_volume: Optional[int] = Field(None, ge=0, le=6000)
     fill_volume: Optional[int] = Field(None, ge=0, le=6000)
