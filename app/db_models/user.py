@@ -11,8 +11,8 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    login_id = Column(String, unique=True, nullable=False) # 아이디(고유번호)
-    password = Column(String, nullable=False) # 비밀번호
+    login_id = Column(String(50), unique=True, nullable=False) # 아이디(고유번호)
+    password = Column(String(100), nullable=False) # 비밀번호
     last_login_at = Column(DateTime, nullable=True) # 마지막에 로그인한 시각
     status = Column(UserStatusEnum, nullable=False) # 활성화 여부
     role = Column(UserRoleEnum, nullable=False) # 권한

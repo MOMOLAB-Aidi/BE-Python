@@ -22,7 +22,7 @@ class RecordExchange(Base):
 
     uf = Column(Integer, nullable=False) # 제수량 (배액량 - 주입액 중량)
 
-    record_id = Column(Integer, ForeignKey("record.id"), nullable=False)
+    record_id = Column(Integer, ForeignKey("record.id", ondelete="CASCADE"), nullable=False)
     record = relationship("Record", back_populates="exchanges")
 
 
