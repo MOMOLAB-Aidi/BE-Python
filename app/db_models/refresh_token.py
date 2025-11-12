@@ -5,11 +5,12 @@ from app.core.db import Base
 
 
 class RefreshToken(Base):
-    __tablename__ = "refresh_tokens"
+    __tablename__ = "refresh_token"
 
     id = Column(Integer, primary_key=True, index=True)
-    token = Column(String(512), nullable=False)
-    expiry_date = Column(DateTime, nullable=False)
 
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
-    user = relationship("User", back_populates="refresh_token")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    user = relationship("User", back_populates="refresh_token", uselist=False)
+
+    token = Column(String(512), nullable=False) # rt
+    expiry_date = Column(DateTime, nullable=False) # 만료 시각

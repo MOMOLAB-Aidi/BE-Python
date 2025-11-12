@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Date, Float, Enum, Text
+from sqlalchemy import Column, Integer, Date, Float, Enum, Text, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
@@ -11,6 +11,10 @@ class Record(Base):
     __tablename__ = "record"
 
     id = Column(Integer, primary_key=True, index=True)
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user = relationship("User", back_populates="record", uselist=False)
+
     record_date = Column(Date, nullable=False) # 기록 날짜
     record_dw = Column(DayWeekEnum, nullable=False) # 기록 요일
 

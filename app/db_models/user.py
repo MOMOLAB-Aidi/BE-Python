@@ -27,6 +27,11 @@ class User(Base):
     record_list = relationship(
         "Record",
         back_populates="user",
-        cascade="all, delete-orphan",
-        passive_deletes=True
+        cascade="all, delete-orphan"
+    )
+
+    record_exchange_list = relationship(
+        "RecordExchange",
+        back_populates="user",
+        cascade="all, delete-orphan"
     )

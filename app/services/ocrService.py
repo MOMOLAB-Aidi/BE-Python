@@ -153,7 +153,7 @@ def _norm_dayweek(dw: Optional[str], d: date) -> str:
 
 
 # OCR 구조화 JSON을 받아 db에 저장 (중복 날짜는 409 반환)
-def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
+def save_pdrecord_json(data: Dict[str, Any], db: Session, user_id: int) -> Record:
     record_date = _parse_date(data.get("record_date"))
     record_dw = _norm_dayweek(data.get("record_dw"), record_date)
 
@@ -174,7 +174,7 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
     # 동일 날짜 존재 여부 체크
     existing = (
         db.query(Record)
-        .filter(Record.record_date == record_date)
+        .filter(Record.record_date == record_date, Record.user_id == user_id)
         .one_or_none()
     )
     if existing is not None:
@@ -184,6 +184,7 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
         )
 
     record = Record(
+        user_id=user_id,
         record_date=record_date,
         record_dw=record_dw,
         weight=weight,
@@ -241,12 +242,13 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session) -> Record:
 
 
 # Record 객체를 응답 JSON으로 직렬화
-def _record_to_dict(rec) -> dict:
+def record_to_dict(rec) -> dict:
     def _t(t):
         return t.strftime("%H:%M") if t else None
 
     return {
         "id": rec.id,
+        "user_id": rec.user_id,
         "record_date": rec.record_date.isoformat(),
         "record_dw": rec.record_dw,
         "weight": rec.weight,

@@ -1,6 +1,5 @@
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status
 from pydantic import BaseModel
-from sqlalchemy import asc
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date
@@ -11,11 +10,14 @@ from app.core.db import get_db
 
 from app.db_models.record import Record
 from app.db_models.record_exchange import RecordExchange
+from app.db_models.user import User
+
+from app.core.auth import get_current_active_user as AuthTokenDep
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
-from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, _record_to_dict
+from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
-    patch_exchange, create_record_common
+    create_record_common, patch_exchange
 
 router = APIRouter()
 
@@ -33,10 +35,14 @@ class RecordCreateResponse(BaseModel):
     status_code=status.HTTP_201_CREATED,
     response_model=RecordCreateResponse,
 )
-def create_record_common_route(payload: RecordCommonCreate, db: Session = Depends(get_db)):
+def create_record_common_route(
+    payload: RecordCommonCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep)
+):
     p = payload.model_dump(exclude_unset=True)
     try:
-        rec = create_record_common(db, p, unique_by_date=True)
+        rec = create_record_common(db, p, user_id=current_user.id, unique_by_date=True)
         return RecordCreateResponse(id=rec.id)
     except IntegrityError:
         db.rollback()
@@ -52,10 +58,18 @@ def create_record_common_route(payload: RecordCommonCreate, db: Session = Depend
     status_code=204,
     responses={204: {"description": "성공입니다"}},
 )
-def patch_record_common(rec_id: int, payload: RecordCommonPatch, db: Session = Depends(get_db)):
+def patch_record_common(
+    rec_id: int,
+    payload: RecordCommonPatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep)
+):
     rec = db.get(Record, rec_id)
     if not rec:
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
 
     patch = payload.model_dump(exclude_unset=True)
 
@@ -73,7 +87,7 @@ def patch_record_common(rec_id: int, payload: RecordCommonPatch, db: Session = D
             if exists:
                 raise HTTPException(status_code=409, detail=f"{new_date.isoformat()} 기록이 이미 존재합니다.")
 
-    apply_record_patch(rec, patch)
+    apply_record_patch(rec, patch, user_id=current_user.id)
 
     db.add(rec)
     db.commit()
@@ -89,13 +103,21 @@ def patch_record_common(rec_id: int, payload: RecordCommonPatch, db: Session = D
     status_code=204,
     responses={204: {"description": "성공입니다"}},
 )
-def upsert_record_exchange(rec_id: int, payload: RecordExchangeCreate, db: Session = Depends(get_db)):
+def create_record_exchange(
+    rec_id: int,
+    payload: RecordExchangeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep)
+):
     rec = db.get(Record, rec_id)
     if not rec:
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
 
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="생성 권한이 없습니다.")
+
     p = payload.model_dump()
-    create_exchange(rec, p)
+    create_exchange(rec, p, user_id=current_user.id)
 
     db.add(rec)
     db.commit()
@@ -111,15 +133,24 @@ def upsert_record_exchange(rec_id: int, payload: RecordExchangeCreate, db: Sessi
     status_code=204,
     responses={204: {"description": "성공입니다"}},
 )
-def patch_record_exchange(rec_id: int, exchange_no: int, payload: RecordExchangePatch, db: Session = Depends(get_db)):
+def patch_record_exchange(
+    rec_id: int,
+    exchange_no: int,
+    payload: RecordExchangePatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep)
+):
     rec = db.get(Record, rec_id)
     if not rec:
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
 
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
+
     p = payload.model_dump(exclude_unset=True)
     p["exchange_no"] = p.get("exchange_no", exchange_no)
 
-    patch_exchange(rec, p)
+    patch_exchange(rec, p, user_id=current_user.id)
 
     db.add(rec)
     db.commit()
@@ -133,10 +164,17 @@ def patch_record_exchange(rec_id: int, exchange_no: int, payload: RecordExchange
     summary="전체 기록 조회",
     description="특정 복막투석기록(공통 + 회차 전체)을 조회합니다."
 )
-def get_record(rec_id: int, db: Session = Depends(get_db)):
+def get_record(
+    rec_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep)
+):
     rec = db.get(Record, rec_id)
     if not rec:
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
     rec = (
         db.query(Record)
         .options(joinedload(Record.exchanges))
@@ -152,10 +190,18 @@ def get_record(rec_id: int, db: Session = Depends(get_db)):
     summary="회차 단건 조회",
     description="특정 기록의 회차 중 교체 ID(RecordExchange.id)로 단건 조회합니다."
 )
-def get_record_exchange_by_id(rec_id: int, exchange_id: int, db: Session = Depends(get_db)):
+def get_record_exchange_by_id(
+    rec_id: int,
+    exchange_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep)
+):
     rec = db.get(Record, rec_id)
     if not rec:
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
 
     row = (
         db.query(RecordExchange)
@@ -177,7 +223,11 @@ def get_record_exchange_by_id(rec_id: int, exchange_id: int, db: Session = Depen
     summary="ocr 텍스트 추출 후 저장",
     description="파일을 업로드하면 OCR 기능으로 텍스트를 추출하여 db에 저장합니다."
 )
-def ocr_and_save(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def ocr_and_save(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep)
+):
     try:
         raw = file.file.read()
         if not raw:
@@ -190,7 +240,7 @@ def ocr_and_save(file: UploadFile = File(...), db: Session = Depends(get_db)):
         )
 
         # JSON → DB 저장/갱신
-        rec = save_pdrecord_json(data, db)
+        rec = save_pdrecord_json(data, db, user_id=current_user.id)
 
         # 관계 선로딩 후 스냅샷 반환 + 세션 종료 후 lazy-load 에러 방지
         rec = (
@@ -200,7 +250,7 @@ def ocr_and_save(file: UploadFile = File(...), db: Session = Depends(get_db)):
             .one()
         )
 
-        return JSONResponse(_record_to_dict(rec))
+        return JSONResponse(record_to_dict(rec))
 
     except OcrError as e:
         raise HTTPException(status_code=400, detail=str(e))
