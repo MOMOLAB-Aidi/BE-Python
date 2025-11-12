@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, Time, Index, Float
+from sqlalchemy import Column, Integer, ForeignKey, Time, Index, Numeric
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
@@ -19,7 +19,7 @@ class RecordExchange(Base):
 
     drain_volume = Column(Integer, nullable=False) # 배액량 (g)
     fill_volume = Column(Integer, nullable=False)  # 주입량 (g)
-    fill_concentration = Column(Float, nullable=False) # 주입액 농도 (%)
+    fill_concentration = Column(Numeric, nullable=False) # 주입액 농도 (%)
 
     uf = Column(Integer, nullable=False) # 제수량 (배액량 - 주입액 중량)
 
