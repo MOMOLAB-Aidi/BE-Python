@@ -9,10 +9,9 @@ class RecordExchange(Base):
     __tablename__ = "record_exchange"
 
     id = Column(Integer, primary_key=True)
-    record_id = Column(
-        Integer, ForeignKey("record.id", ondelete="CASCADE"),
-        nullable=False, index=True
-    )
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, default=1)
+    user = relationship("User", back_populates="record_exchange_list", uselist=False)
 
     exchange_no = Column(Integer, nullable=False) # 구분(회차)
     exchange_time = Column(Time, nullable=False) # 교환 시각
@@ -23,6 +22,7 @@ class RecordExchange(Base):
 
     uf = Column(Integer, nullable=False) # 제수량 (배액량 - 주입액 중량)
 
+    record_id = Column(Integer, ForeignKey("record.id"), nullable=False)
     record = relationship("Record", back_populates="exchanges")
 
 
