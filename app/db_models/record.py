@@ -12,7 +12,7 @@ class Record(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, default=1)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="record_list")
 
     record_date = Column(Date, nullable=False) # 기록 날짜

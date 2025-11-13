@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, Time, Index, Float
+from sqlalchemy import Column, Integer, ForeignKey, Time, Index, Numeric, Float
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
@@ -10,8 +10,8 @@ class RecordExchange(Base):
 
     id = Column(Integer, primary_key=True)
 
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, default=1)
-    user = relationship("User", back_populates="record_exchange_list", uselist=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user = relationship("User", back_populates="record_exchange_list")
 
     exchange_no = Column(Integer, nullable=False) # 구분(회차)
     exchange_time = Column(Time, nullable=False) # 교환 시각

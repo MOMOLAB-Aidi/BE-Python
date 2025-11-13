@@ -114,25 +114,25 @@ def _require_fields_for_create(rec: Record):
 
 
 # 공통 정보 생성용 객체 빌더
-def create_record_common_obj(p: Dict[str, Any]) -> Record:
-    rec = Record()
+def create_record_common_obj(p: Dict[str, Any], user_id: int) -> Record:
+    rec = Record(user_id=user_id)
     # 날짜 미지정 시 오늘
     if "record_date" not in p or p["record_date"] is None:
         p = {**p, "record_date": _date.today()}
 
-    apply_record_patch(rec, p)
+    apply_record_patch(rec, p, user_id=user_id)
     _require_fields_for_create(rec)
     return rec
 
 
 # 공통 정보 생성
-def create_record_common(db: Session, p: Dict[str, Any], *, unique_by_date: bool = True) -> Record:
-    rec = create_record_common_obj(p)
+def create_record_common(db: Session, p: Dict[str, Any], user_id: int, *, unique_by_date: bool = True) -> Record:
+    rec = create_record_common_obj(p, user_id)
 
     if unique_by_date:
         existing = (
             db.query(Record)
-            .filter(Record.record_date == rec.record_date)
+            .filter(Record.record_date == rec.record_date, Record.user_id==user_id)
             .one_or_none()
         )
         if existing:
@@ -146,7 +146,12 @@ def create_record_common(db: Session, p: Dict[str, Any], *, unique_by_date: bool
 
 
 # 공통 정보 수정
-def apply_record_patch(rec: Record, p: Dict[str, Any]) -> None:
+def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_ownership: bool = True) -> None:
+
+    # 기록의 소유자와 현재 사용자 ID가 일치하는지 확인
+    if check_ownership and rec.user_id != user_id:
+        raise HTTPException(status_code=403, detail="기록을 수정할 권한이 없습니다.")
+
     if "record_date" in p and p["record_date"] is not None:
         rd = p["record_date"]
         if isinstance(rd, str):
@@ -213,7 +218,12 @@ def find_exchange(rec: Record, exchange_no: int) -> Optional[RecordExchange]:
     return None
 
 # 존재하는 회차만 수정
-def patch_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
+def patch_exchange(rec: Record, p: Dict[str, Any], user_id: int) -> RecordExchange:
+
+    # 소유권 검증
+    if rec.user_id != user_id:
+        raise HTTPException(status_code=403, detail="기록을 수정할 권한이 없습니다.")
+
     ex_no = _require_exchange_no(p)
     target = find_exchange(rec, ex_no)
     if target is None:
@@ -222,13 +232,18 @@ def patch_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
     return target
 
 # 회차 정보 생성
-def create_exchange(rec: Record, p: Dict[str, Any]) -> RecordExchange:
+def create_exchange(rec: Record, p: Dict[str, Any], user_id: int) -> RecordExchange:
+
+    # 소유권 검증
+    if rec.user_id != user_id:
+        raise HTTPException(status_code=403, detail="기록을 수정할 권한이 없습니다.")
+
     ex_no = _next_exchange_no(rec)
 
     if find_exchange(rec, ex_no) is not None:
         raise HTTPException(status_code=409, detail=f"{ex_no}회차가 이미 존재합니다.")
 
-    target = RecordExchange(exchange_no=ex_no)
+    target = RecordExchange(exchange_no=ex_no, user_id=rec.user_id)
     _apply_exchange_fields(target, p)
 
     rec.exchanges = (rec.exchanges or [])

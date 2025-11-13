@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
     GOOGLE_GENAI_USE_VERTEXAI: bool = False
 
+    # jwt
+    JWT_SECRET_KEY: Optional[str] = None
+    JWT_ALGORITHM: Optional[str] = None
+    JWT_ACCESS_TOKEN_EXPIRATION_MS: Optional[int] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False, # 대소문자 구분 x
