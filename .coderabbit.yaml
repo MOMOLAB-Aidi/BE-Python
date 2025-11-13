@@ -6,6 +6,8 @@ reviews:
   high_level_summary: true
   review_status: true
   request_changes_workflow: false
+  sequence_diagrams: false
+  poem: false
 
   # PR 자동 리뷰
   auto_review:
