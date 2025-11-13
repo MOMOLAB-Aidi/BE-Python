@@ -30,7 +30,7 @@ def get_user_from_token(token: str) -> int:
 
         return int(user_id_str)
 
-    except JWTError as e:
+    except (JWTError, ValueError, TypeError) as e:
         print(f"\n[DEBUG] JWTError 발생: {e}")
         raise credentials_exception
 

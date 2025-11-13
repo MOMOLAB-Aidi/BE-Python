@@ -81,7 +81,10 @@ def patch_record_common(
         if new_date != rec.record_date:
             exists = (
                 db.query(Record.id)
-                .filter(Record.record_date == new_date, Record.id != rec.id)
+                .filter(
+                    Record.record_date == new_date,
+                    Record.id != rec.id,
+                    Record.user_id == current_user.id)
                 .first()
             )
             if exists:
