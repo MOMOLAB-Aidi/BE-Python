@@ -19,14 +19,7 @@ def get_user_from_token(token: str) -> int:
         detail="인증 정보를 확인할 수 없습니다.",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    # 🚨🚨🚨 [DEBUG START] 이 부분을 함수 시작 부분에 삽입하세요 🚨🚨🚨
-    print("\n" + "="*50)
-    print("[DEBUG] [JWT SETTINGS & TOKEN CHECK]")
-    print(f"  settings.JWT_SECRET_KEY: {settings.JWT_SECRET_KEY}")
-    print(f"  settings.JWT_ALGORITHM: {settings.JWT_ALGORITHM}")
-    print(f"  Received Token: {token[:50]}...") # 토큰이 너무 길 경우 앞부분 50자만 출력
-    print("="*50 + "\n")
-    # 🚨🚨🚨 [DEBUG END] 🚨🚨🚨
+
     try:
         # 토큰 디코딩 및 검증
         payload = jwt.decode(token, base64.b64decode(settings.JWT_SECRET_KEY), algorithms=[settings.JWT_ALGORITHM])
