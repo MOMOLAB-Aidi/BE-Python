@@ -1,8 +1,10 @@
+import hashlib
+
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
-from datetime import date as _date
+from datetime import date as _date, datetime
 
 from starlette.responses import JSONResponse
 
@@ -15,7 +17,8 @@ from app.db_models.user import User
 from app.core.auth import get_current_active_user as AuthTokenDep
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
-from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict
+from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
+    upload_to_gcs
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
     create_record_common, patch_exchange
 
@@ -236,14 +239,29 @@ def ocr_and_save(
         if not raw:
             raise HTTPException(status_code=400, detail="빈 파일입니다.")
 
-        # OCR → 구조화 JSON
+        # 사용자 해시값 생성
+        user_hash = hashlib.sha256(str(current_user.id).encode()).hexdigest()[:16]
+
+        # 1. OCR만 처리: 409 에러가 발생했음에도 이미지가 저장되는 문제가 존재
         data = ocr_bytes_to_pdrecord_json(
             file_bytes=raw,
             content_type=file.content_type or "application/octet-stream",
+            save_to_gcs=False,
+            user_hash=user_hash
         )
 
-        # JSON → DB 저장/갱신
+        # 2. DB 저장
         rec = save_pdrecord_json(data, db, user_id=current_user.id)
+
+        # 3. GCS 업로드
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"ocr_{rec.record_date}_{timestamp}.jpg"
+        gcs_path = upload_to_gcs(
+            file_bytes=raw,
+            user_hash=user_hash,
+            filename=filename,
+            content_type=file.content_type or "image/jpeg"
+        )
 
         # 관계 선로딩 후 스냅샷 반환 + 세션 종료 후 lazy-load 에러 방지
         rec = (

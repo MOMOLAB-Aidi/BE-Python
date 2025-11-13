@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from google import genai
 from base64 import b64encode
 
+from google.cloud import storage
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,9 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 gemini = genai.Client(api_key=GOOGLE_API_KEY) if (genai and GOOGLE_API_KEY) else None
 
+# GCP Storage 설정
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
+
 # 허용 MIME
 ALLOWED_MIME = {"image/jpeg", "image/png"}
 
@@ -26,17 +30,77 @@ class OcrError(Exception):
     # OCR 처리 중 발생한 도메인 예외
     pass
 
+
+# 사용자별 OCR 이미지 경로 생성
+def get_user_ocr_path(user_hash: str, filename: str) -> str:
+    return f"users/{user_hash}/ocr/{filename}"
+
+
+# 바이트 데이터를 GCS에 업로드
+def upload_to_gcs(
+        file_bytes: bytes,
+        user_hash: str,
+        filename: str,
+        content_type: str
+) -> str:
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(GCS_BUCKET_NAME)
+
+        # users/{user_hash}/ocr/{filename} 경로로 저장
+        destination_blob_name = get_user_ocr_path(user_hash, filename)
+        blob = bucket.blob(destination_blob_name)
+
+        blob.upload_from_string(file_bytes, content_type=content_type)
+        print(f"GCS 업로드 완료: gs://{GCS_BUCKET_NAME}/{destination_blob_name}")
+
+        return destination_blob_name
+    except Exception as e:
+        raise OcrError(f"GCS 업로드 실패: {type(e).__name__}: {e}") from e
+
+
+# GCS에서 파일을 바이트로 다운로드
+def download_from_gcs(gcs_path: str) -> bytes:
+    try:
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(GCS_BUCKET_NAME)
+        blob = bucket.blob(gcs_path)
+
+        file_bytes = blob.download_as_bytes()
+        print(f"GCS 다운로드 완료: gs://{GCS_BUCKET_NAME}/{gcs_path}")
+
+        return file_bytes
+    except Exception as e:
+        raise OcrError(f"GCS 다운로드 실패: {type(e).__name__}: {e}") from e
+
+
 # 바이트 + MIME 타입을 받아 gemini로 OCR을 수행 -> 텍스트를 json 형태로 반환
 def ocr_bytes_to_pdrecord_json(
     file_bytes: bytes,
     content_type: str,
     model: str = "gemini-2.5-flash",
+    save_to_gcs: bool = False,
+    user_hash: Optional[str] = None,
+    gcs_filename: Optional[str] = None,
 ) -> Dict[str, Any]:
     if not file_bytes:
         raise OcrError("빈 파일입니다.")
     if content_type not in ALLOWED_MIME:
         allowed = ", ".join(sorted(ALLOWED_MIME))
         raise OcrError(f"지원하지 않는 형식입니다. 허용: {allowed}")
+
+    # GCS에 저장
+    if save_to_gcs:
+        if not user_hash:
+            raise OcrError("save_to_gcs=True일 때 user_hash가 필요합니다.")
+
+        if gcs_filename is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ext = "jpg" if content_type == "image/jpeg" else "png"
+            gcs_filename = f"ocr_{timestamp}.{ext}"
+
+        upload_to_gcs(file_bytes, user_hash, gcs_filename, content_type)
+
 
     prompt = (
         "다음 이미지는 '복막투석기록일지'야. 표 안의 **실제 값**을 읽어 "
