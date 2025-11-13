@@ -217,6 +217,7 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session, user_id: int) -> Recor
 
             record.exchanges.append(
                 RecordExchange(
+                    user_id=record.user_id,
                     exchange_no=ex_no,
                     exchange_time=ex_time,
                     drain_volume=drain_v,

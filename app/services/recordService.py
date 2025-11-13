@@ -243,7 +243,7 @@ def create_exchange(rec: Record, p: Dict[str, Any], user_id: int) -> RecordExcha
     if find_exchange(rec, ex_no) is not None:
         raise HTTPException(status_code=409, detail=f"{ex_no}회차가 이미 존재합니다.")
 
-    target = RecordExchange(exchange_no=ex_no)
+    target = RecordExchange(exchange_no=ex_no, user_id=rec.user_id)
     _apply_exchange_fields(target, p)
 
     rec.exchanges = (rec.exchanges or [])

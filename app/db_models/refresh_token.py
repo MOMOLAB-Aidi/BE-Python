@@ -12,5 +12,5 @@ class RefreshToken(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
     user = relationship("User", back_populates="refresh_token", uselist=False)
 
-    token = Column(String(512), nullable=False) # rt
+    refresh_token = Column(String(512), nullable=False) # rt
     expiry_date = Column(DateTime, nullable=False) # 만료 시각

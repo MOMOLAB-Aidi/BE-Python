@@ -18,6 +18,13 @@ class User(Base):
     status = Column(UserStatusEnum, nullable=False) # 활성화 여부
     role = Column(UserRoleEnum, nullable=False) # 권한
 
+    refresh_token = relationship(
+        "RefreshToken",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+
     record_list = relationship(
         "Record",
         back_populates="user",

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, Time, Index, Numeric
+from sqlalchemy import Column, Integer, ForeignKey, Time, Index, Numeric, Float
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
@@ -11,14 +11,14 @@ class RecordExchange(Base):
     id = Column(Integer, primary_key=True)
 
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    user = relationship("User", back_populates="record_exchange_list", uselist=False)
+    user = relationship("User", back_populates="record_exchange_list")
 
     exchange_no = Column(Integer, nullable=False) # 구분(회차)
     exchange_time = Column(Time, nullable=False) # 교환 시각
 
     drain_volume = Column(Integer, nullable=False) # 배액량 (g)
     fill_volume = Column(Integer, nullable=False)  # 주입량 (g)
-    fill_concentration = Column(Numeric, nullable=False) # 주입액 농도 (%)
+    fill_concentration = Column(Float, nullable=False) # 주입액 농도 (%)
 
     uf = Column(Integer, nullable=False) # 제수량 (배액량 - 주입액 중량)
 
