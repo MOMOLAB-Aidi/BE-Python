@@ -47,7 +47,7 @@ def upload_to_gcs(
         storage_client = storage.Client()
         bucket = storage_client.bucket(GCS_BUCKET_NAME)
 
-        # users/{user_hash}/ocr/{filename} 경로로 저장
+        # users/{user_hash}/ocr 경로로 저장 (파일명 ocr_{rec.record_date}_{timestamp})
         destination_blob_name = get_user_ocr_path(user_hash, filename)
         blob = bucket.blob(destination_blob_name)
 
