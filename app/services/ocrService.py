@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from datetime import date, datetime, time
 from typing import Optional, Dict, Any, List
@@ -8,6 +9,7 @@ from fastapi import HTTPException
 from google import genai
 from base64 import b64encode
 
+from google.cloud import storage
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,18 +21,81 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 gemini = genai.Client(api_key=GOOGLE_API_KEY) if (genai and GOOGLE_API_KEY) else None
 
+# GCP Storage 설정
+GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
+
 # 허용 MIME
 ALLOWED_MIME = {"image/jpeg", "image/png"}
 
 class OcrError(Exception):
-    # OCR 처리 중 발생한 도메인 예외
-    pass
+    # OCR 및 관련 작업에서 발생하는 커스텀 에러
+    def __init__(self, message, is_client_error=True):
+        super().__init__(message)
+        self._is_client_error = is_client_error
+
+    # 4xx인지 5xx인지 반환
+    def is_client_error(self):
+        return self._is_client_error
+
+logger = logging.getLogger(__name__)
+
+
+# 사용자별 OCR 이미지 경로 생성
+def get_user_ocr_path(user_hash: str, record_date: str, filename: str) -> str:
+    return f"users/{user_hash}/ocr/{record_date}/{filename}"
+
+
+def _get_bucket():
+    if not GCS_BUCKET_NAME:
+        raise OcrError("GCS 버킷 설정이 올바르지 않습니다.", is_client_error=False)
+    client = storage.Client()
+    return client.bucket(GCS_BUCKET_NAME)
+
+
+# 바이트 데이터를 GCS에 업로드
+def upload_to_gcs(
+        file_bytes: bytes,
+        user_hash: str,
+        record_date: str,
+        filename: str,
+        content_type: str
+) -> str:
+    try:
+        bucket = _get_bucket()
+
+        # users/{user_hash}/ocr 경로로 저장 (파일명 ocr_{rec.record_date}_{timestamp})
+        destination_blob_name = get_user_ocr_path(user_hash, record_date, filename)
+        blob = bucket.blob(destination_blob_name)
+
+        blob.upload_from_string(file_bytes, content_type=content_type)
+        logger.info(f"GCS 업로드 완료: gs://{GCS_BUCKET_NAME}/{destination_blob_name}")
+
+        return destination_blob_name
+    except Exception as e:
+        logger.exception("GCS 업로드 실패")
+        raise OcrError("GCS 업로드 중 오류가 발생했습니다.", is_client_error=False) from e
+
+
+# GCS에서 파일을 바이트로 다운로드
+def download_from_gcs(gcs_path: str) -> bytes:
+    try:
+        bucket = _get_bucket()
+        blob = bucket.blob(gcs_path)
+
+        file_bytes = blob.download_as_bytes()
+        logger.info(f"GCS 다운로드 완료: gs://{GCS_BUCKET_NAME}/{gcs_path}")
+
+        return file_bytes
+    except Exception as e:
+        logger.exception("GCS 다운로드 실패")
+        raise OcrError("GCS 다운로드 중 오류가 발생했습니다.", is_client_error=False) from e
+
 
 # 바이트 + MIME 타입을 받아 gemini로 OCR을 수행 -> 텍스트를 json 형태로 반환
 def ocr_bytes_to_pdrecord_json(
     file_bytes: bytes,
     content_type: str,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-2.5-flash"
 ) -> Dict[str, Any]:
     if not file_bytes:
         raise OcrError("빈 파일입니다.")
@@ -101,11 +166,12 @@ def ocr_bytes_to_pdrecord_json(
         data.setdefault("blood_pressure", {"systolic": None, "diastolic": None})
         return data
 
-    # 모델이 JSON 이외의 응답을 출력하는 경우
-    except json.JSONDecodeError:
-        raise OcrError("모델이 JSON이 아닌 응답을 반환했습니다. 프롬프트/이미지를 확인하세요.")
+    except json.JSONDecodeError as e:
+        logger.exception("모델 JSON 파싱 실패")
+        raise OcrError("OCR 처리 중 서버 오류가 발생했습니다.", is_client_error=False) from e
     except Exception as e:
-        raise OcrError(f"OCR 처리 실패: {type(e).__name__}: {e}") from e
+        logger.exception("OCR 처리 실패")
+        raise OcrError("OCR 처리 중 서버 오류가 발생했습니다.", is_client_error=False) from e
 
 
 WEEK_KR = ["월","화","수","목","금","토","일"]
