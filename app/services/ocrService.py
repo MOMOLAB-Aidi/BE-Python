@@ -42,6 +42,13 @@ def get_user_ocr_path(user_hash: str, filename: str) -> str:
     return f"users/{user_hash}/ocr/{filename}"
 
 
+def _get_bucket():
+    if not GCS_BUCKET_NAME:
+        raise OcrError("GCS 버킷 설정이 올바르지 않습니다.")
+    client = storage.Client()
+    return client.bucket(GCS_BUCKET_NAME)
+
+
 # 바이트 데이터를 GCS에 업로드
 def upload_to_gcs(
         file_bytes: bytes,
@@ -50,8 +57,7 @@ def upload_to_gcs(
         content_type: str
 ) -> str:
     try:
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(GCS_BUCKET_NAME)
+        bucket = _get_bucket()
 
         # users/{user_hash}/ocr 경로로 저장 (파일명 ocr_{rec.record_date}_{timestamp})
         destination_blob_name = get_user_ocr_path(user_hash, filename)
@@ -62,7 +68,7 @@ def upload_to_gcs(
 
         return destination_blob_name
     except Exception as e:
-        raise OcrError(f"GCS 업로드 실패: {type(e).__name__}: {e}") from e
+        raise OcrError("GCS 업로드 중 오류가 발생했습니다.") from e
 
 
 # GCS에서 파일을 바이트로 다운로드
