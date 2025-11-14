@@ -1,4 +1,5 @@
 import hashlib
+from sysconfig import get_scheme_names
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status
 from pydantic import BaseModel
@@ -296,13 +297,17 @@ def ocr_and_save(
 
         filename = f"ocr_{rec.record_date}_{timestamp}.{ext}"
 
-        upload_to_gcs(
+        gcs_path_result = upload_to_gcs(
             file_bytes=raw,
             user_hash=user_hash,
             record_date=rec.record_date.strftime("%Y%m%d"),
             filename=filename,
             content_type=content_type
         )
+
+        rec.gcs_path = gcs_path_result
+        db.add(rec)
+        db.commit()
 
         # 관계 선로딩 후 스냅샷 반환 + 세션 종료 후 lazy-load 에러 방지
         rec = (

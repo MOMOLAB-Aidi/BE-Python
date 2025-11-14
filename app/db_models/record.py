@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Date, Float, Enum, Text, ForeignKey
+from sqlalchemy import Column, Integer, Date, Float, Enum, Text, ForeignKey, String
 from sqlalchemy.orm import relationship
 
 from app.core.db import Base
@@ -29,6 +29,8 @@ class Record(Base):
     notes = Column(Text, nullable=True) # 비고
 
     total_uf = Column(Integer, nullable=False)  # 제수량 합계
+
+    gcs_path: str = Column(String(512), nullable=True) # GCS에 저장된 OCR 이미지 파일 경로
 
     # 관계: 회차별 데이터
     exchanges = relationship(

@@ -91,6 +91,19 @@ def download_from_gcs(gcs_path: str) -> bytes:
         raise OcrError("GCS 다운로드 중 오류가 발생했습니다.", is_client_error=False) from e
 
 
+def delete_from_gcs(gcs_path: str) -> bool:
+    try:
+        bucket = _get_bucket()
+        blob = bucket.blob(gcs_path)
+
+        blob.delete()
+        logger.info(f"GCS 삭제 완료: gs://{GCS_BUCKET_NAME}/{gcs_path}")
+        return True
+    except Exception as e:
+        print(f"GCS 삭제 실패: {type(e).__name__}: {e}")
+        return False
+
+
 # 바이트 + MIME 타입을 받아 gemini로 OCR을 수행 -> 텍스트를 json 형태로 반환
 def ocr_bytes_to_pdrecord_json(
     file_bytes: bytes,
