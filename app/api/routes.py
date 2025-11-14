@@ -249,9 +249,7 @@ def ocr_and_save(
         # 1. OCR만 처리: 409 에러가 발생했음에도 이미지가 저장되는 문제가 존재
         data = ocr_bytes_to_pdrecord_json(
             file_bytes=raw,
-            content_type=file.content_type or "application/octet-stream",
-            save_to_gcs=False,
-            user_hash=user_hash
+            content_type=file.content_type or "application/octet-stream"
         )
 
         # 2. DB 저장
