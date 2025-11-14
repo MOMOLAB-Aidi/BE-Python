@@ -39,9 +39,9 @@ class RecordCreateResponse(BaseModel):
     response_model=RecordCreateResponse,
 )
 def create_record_common_route(
-    payload: RecordCommonCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthTokenDep)
+        payload: RecordCommonCreate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
 ):
     p = payload.model_dump(exclude_unset=True)
     try:
@@ -62,10 +62,10 @@ def create_record_common_route(
     responses={204: {"description": "성공입니다"}},
 )
 def patch_record_common(
-    rec_id: int,
-    payload: RecordCommonPatch,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthTokenDep)
+        rec_id: int,
+        payload: RecordCommonPatch,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
 ):
     rec = db.get(Record, rec_id)
     if not rec:
@@ -100,6 +100,7 @@ def patch_record_common(
     db.refresh(rec)
     return Response(status_code=204)
 
+
 # 복막투석기록 회차 정보 생성 api
 @router.post(
     "/api/v1/records/{rec_id}/exchanges",
@@ -110,10 +111,10 @@ def patch_record_common(
     responses={204: {"description": "성공입니다"}},
 )
 def create_record_exchange(
-    rec_id: int,
-    payload: RecordExchangeCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthTokenDep)
+        rec_id: int,
+        payload: RecordExchangeCreate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
 ):
     rec = db.get(Record, rec_id)
     if not rec:
@@ -130,6 +131,7 @@ def create_record_exchange(
     db.refresh(rec)
     return Response(status_code=204)
 
+
 # 복막투석기록 회차 정보 수정 api
 @router.patch(
     "/api/v1/records/{rec_id}/exchanges/{exchange_no}",
@@ -140,11 +142,11 @@ def create_record_exchange(
     responses={204: {"description": "성공입니다"}},
 )
 def patch_record_exchange(
-    rec_id: int,
-    exchange_no: int,
-    payload: RecordExchangePatch,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthTokenDep)
+        rec_id: int,
+        exchange_no: int,
+        payload: RecordExchangePatch,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
 ):
     rec = db.get(Record, rec_id)
     if not rec:
@@ -163,6 +165,7 @@ def patch_record_exchange(
     db.refresh(rec)
     return Response(status_code=204)
 
+
 # 특정 복막투석기록 조회 api (공통 + 회차)
 @router.get(
     "/api/v1/records/{rec_id}",
@@ -171,9 +174,9 @@ def patch_record_exchange(
     description="특정 복막투석기록(공통 + 회차 전체)을 조회합니다."
 )
 def get_record(
-    rec_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthTokenDep)
+        rec_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
 ):
     rec = db.get(Record, rec_id)
     if not rec:
@@ -189,6 +192,7 @@ def get_record(
     )
     return rec_to_dict(rec)
 
+
 # 특정 복막투석기록 회차 정보 조회
 @router.get(
     "/api/v1/records/{rec_id}/exchanges/{exchange_id}",
@@ -197,10 +201,10 @@ def get_record(
     description="특정 기록의 회차 중 교체 ID(RecordExchange.id)로 단건 조회합니다."
 )
 def get_record_exchange_by_id(
-    rec_id: int,
-    exchange_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthTokenDep)
+        rec_id: int,
+        exchange_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
 ):
     rec = db.get(Record, rec_id)
     if not rec:
@@ -230,9 +234,9 @@ def get_record_exchange_by_id(
     description="파일을 업로드하면 OCR 기능으로 텍스트를 추출하여 db에 저장합니다."
 )
 def ocr_and_save(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(AuthTokenDep)
+        file: UploadFile = File(...),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
 ):
     try:
         raw = file.file.read()
@@ -255,8 +259,15 @@ def ocr_and_save(
 
         # 3. GCS 업로드
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"ocr_{rec.record_date}_{timestamp}.jpg"
-        gcs_path = upload_to_gcs(
+
+        # 파일 MIME 타입에 따라 확장자 결정
+        ext = "jpg"
+        if file.content_type and "png" in file.content_type.lower():
+            ext = "png"
+
+        filename = f"ocr_{rec.record_date}_{timestamp}.{ext}"
+
+        upload_to_gcs(
             file_bytes=raw,
             user_hash=user_hash,
             filename=filename,
@@ -274,7 +285,10 @@ def ocr_and_save(
         return JSONResponse(record_to_dict(rec))
 
     except OcrError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if e.is_client_error():
+            raise HTTPException(status_code=400, detail=str(e))
+        else:
+            raise HTTPException(status_code=500, detail=str(e))
     except HTTPException:
         raise
     except ValueError as e:

@@ -27,8 +27,14 @@ GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 ALLOWED_MIME = {"image/jpeg", "image/png"}
 
 class OcrError(Exception):
-    # OCR 처리 중 발생한 도메인 예외
-    pass
+    # OCR 및 관련 작업에서 발생하는 커스텀 에러
+    def __init__(self, message, is_client_error=True):
+        super().__init__(message)
+        self._is_client_error = is_client_error
+
+    # 4xx인지 5xx인지 반환
+    def is_client_error(self):
+        return self._is_client_error
 
 
 # 사용자별 OCR 이미지 경로 생성
