@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.db_models.record import Record
 from app.db_models.record_exchange import RecordExchange
+from app.services.ocrService import delete_from_gcs, OcrError
+
 
 # =========================
 # 공통 유틸 / 파서
@@ -249,3 +251,36 @@ def create_exchange(rec: Record, p: Dict[str, Any], user_id: int) -> RecordExcha
     rec.exchanges = (rec.exchanges or [])
     rec.exchanges.append(target)
     return target
+
+
+# 기록 삭제
+def delete_record(db: Session, rec_id: int, user_id: int) -> None:
+
+    record = (
+        db.query(Record)
+        .filter(Record.id == rec_id)
+        .one_or_none()
+    )
+
+    if not record:
+        raise HTTPException(status_code=404, detail=f"기록 ID {rec_id}를 찾을 수 없습니다.")
+
+    # 소유권 검증
+    if record.user_id != user_id:
+        raise HTTPException(status_code=403, detail="기록을 삭제할 권한이 없습니다.")
+
+    # GCS 이미지 삭제
+    if record.gcs_path:
+        # GCS 삭제 실패 시 DB 트랜잭션도 함께 중단
+        try:
+            delete_from_gcs(record.gcs_path)
+        except OcrError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"GCS 이미지 삭제(경로: {record.gcs_path})에 실패하여 DB 기록 삭제를 취소합니다. 잠시 후 다시 시도해 주세요."
+            ) from e
+
+    # record 삭제
+    db.delete(record)
+    db.commit()
+    return

@@ -1,4 +1,5 @@
 import hashlib
+import logging
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status
 from pydantic import BaseModel
@@ -18,11 +19,13 @@ from app.core.auth import get_current_active_user as AuthTokenDep
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
-    upload_to_gcs
+    upload_to_gcs, delete_from_gcs
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
-    create_record_common, patch_exchange
+    create_record_common, patch_exchange, delete_record
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 class RecordCreateResponse(BaseModel):
@@ -226,6 +229,30 @@ def get_record_exchange_by_id(
     return ex_to_dict(row)
 
 
+# 기록 삭제 api
+@router.delete(
+    "/api/v1/records/{rec_id}",
+    tags=["복막투석기록"],
+    summary="기록 삭제",
+    description="특정 아이디의 기록을 삭제합니다. 연관된 회차 정보를 모두 삭제합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
+)
+def delete_record_route(
+        rec_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+):
+    try:
+        delete_record(db, rec_id, current_user.id)
+        return Response(status_code=204)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="기록 삭제 중 서버 오류가 발생했습니다.") from e
+
+
 # 파일 업로드 -> OCR 텍스트 추출 -> JSON 반환 -> db 저장 api
 @router.post(
     "/api/v1/ocr",
@@ -271,13 +298,28 @@ def ocr_and_save(
 
         filename = f"ocr_{rec.record_date}_{timestamp}.{ext}"
 
-        upload_to_gcs(
+        gcs_path_result = upload_to_gcs(
             file_bytes=raw,
             user_hash=user_hash,
             record_date=rec.record_date.strftime("%Y%m%d"),
             filename=filename,
             content_type=content_type
         )
+
+        # 새로운 트랜잭션으로 gcs_path 업데이트
+        try:
+            rec.gcs_path = gcs_path_result
+            db.add(rec)
+            db.commit()
+        except Exception:
+            # GCS 업로드는 성공했지만 DB 업데이트 실패 - GCS 파일 삭제
+            db.rollback()
+            try:
+                delete_from_gcs(gcs_path_result)
+            except Exception:
+                logger.exception(f"롤백 중 GCS 파일 삭제 실패: {gcs_path_result}")
+            raise
+
 
         # 관계 선로딩 후 스냅샷 반환 + 세션 종료 후 lazy-load 에러 방지
         rec = (
