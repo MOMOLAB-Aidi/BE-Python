@@ -20,7 +20,7 @@ from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, Reco
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
     upload_to_gcs
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
-    create_record_common, patch_exchange
+    create_record_common, patch_exchange, delete_record
 
 router = APIRouter()
 
@@ -224,6 +224,31 @@ def get_record_exchange_by_id(
     if not row:
         raise HTTPException(status_code=404, detail="해당 회차를 찾을 수 없습니다.")
     return ex_to_dict(row)
+
+
+# 기록 삭제 api
+@router.delete(
+    "/api/v1/records/{rec_id}",
+    tags=["복막투석기록"],
+    summary="기록 삭제",
+    description="특정 아이디의 기록을 삭제합니다. 연관된 회차 정보를 모두 삭제합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
+)
+def delete_record_route(
+        rec_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+):
+    try:
+        delete_record(db, rec_id, current_user.id)
+
+        return Response(status_code=204)
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"서버 오류 발생: {str(e)}")
 
 
 # 파일 업로드 -> OCR 텍스트 추출 -> JSON 반환 -> db 저장 api

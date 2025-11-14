@@ -249,3 +249,31 @@ def create_exchange(rec: Record, p: Dict[str, Any], user_id: int) -> RecordExcha
     rec.exchanges = (rec.exchanges or [])
     rec.exchanges.append(target)
     return target
+
+
+# 기록 삭제
+def delete_record(db: Session, rec_id: int, user_id: int) -> None:
+
+    record = (
+        db.query(Record)
+        .filter(Record.id == rec_id)
+        .one_or_none()
+    )
+
+    if not record:
+        raise HTTPException(status_code=404, detail=f"기록 ID {rec_id}를 찾을 수 없습니다.")
+
+    # 소유권 검증
+    if record.user_id != user_id:
+        raise HTTPException(status_code=403, detail="기록을 삭제할 권한이 없습니다.")
+
+    # 연관된 exchange 기록 삭제 (cascade 설정에 따라 불필요할 수 있으나 안전을 위해 명시)
+    if record.exchanges:
+        for exchange in record.exchanges:
+            db.delete(exchange)
+
+    # record 삭제
+    db.delete(record)
+
+    db.commit()
+    return
