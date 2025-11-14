@@ -270,6 +270,7 @@ def ocr_and_save(
         upload_to_gcs(
             file_bytes=raw,
             user_hash=user_hash,
+            record_date=rec.record_date.strftime("%Y%m%d"),
             filename=filename,
             content_type=file.content_type or "image/jpeg"
         )

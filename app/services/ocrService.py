@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from datetime import date, datetime, time
 from typing import Optional, Dict, Any, List
@@ -36,15 +37,17 @@ class OcrError(Exception):
     def is_client_error(self):
         return self._is_client_error
 
+logger = logging.getLogger(__name__)
+
 
 # 사용자별 OCR 이미지 경로 생성
-def get_user_ocr_path(user_hash: str, filename: str) -> str:
-    return f"users/{user_hash}/ocr/{filename}"
+def get_user_ocr_path(user_hash: str, record_date: str, filename: str) -> str:
+    return f"users/{user_hash}/ocr/{record_date}/{filename}"
 
 
 def _get_bucket():
     if not GCS_BUCKET_NAME:
-        raise OcrError("GCS 버킷 설정이 올바르지 않습니다.")
+        raise OcrError("GCS 버킷 설정이 올바르지 않습니다.", is_client_error=False)
     client = storage.Client()
     return client.bucket(GCS_BUCKET_NAME)
 
@@ -53,6 +56,7 @@ def _get_bucket():
 def upload_to_gcs(
         file_bytes: bytes,
         user_hash: str,
+        record_date: str,
         filename: str,
         content_type: str
 ) -> str:
@@ -60,15 +64,16 @@ def upload_to_gcs(
         bucket = _get_bucket()
 
         # users/{user_hash}/ocr 경로로 저장 (파일명 ocr_{rec.record_date}_{timestamp})
-        destination_blob_name = get_user_ocr_path(user_hash, filename)
+        destination_blob_name = get_user_ocr_path(user_hash, record_date, filename)
         blob = bucket.blob(destination_blob_name)
 
         blob.upload_from_string(file_bytes, content_type=content_type)
-        print(f"GCS 업로드 완료: gs://{GCS_BUCKET_NAME}/{destination_blob_name}")
+        logger.info(f"GCS 업로드 완료: gs://{GCS_BUCKET_NAME}/{destination_blob_name}")
 
         return destination_blob_name
     except Exception as e:
-        raise OcrError("GCS 업로드 중 오류가 발생했습니다.") from e
+        logger.exception("GCS 업로드 실패")
+        raise OcrError("GCS 업로드 중 오류가 발생했습니다.", is_client_error=False) from e
 
 
 # GCS에서 파일을 바이트로 다운로드
