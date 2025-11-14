@@ -271,13 +271,14 @@ def delete_record(db: Session, rec_id: int, user_id: int) -> None:
 
     # GCS 이미지 삭제 🗑
     if record.gcs_path:
-        # GCS 삭제 실패는 DB 트랜잭션을 중단시키지 않고 로그만 남기도록 처리
+        # GCS 삭제 실패 시 DB 트랜잭션도 함께 중단
         if not delete_from_gcs(record.gcs_path):
-            # GCS 삭제 실패 시 DB 삭제를 중단하고 500 에러 발생
             raise HTTPException(
                 status_code=500,
                 detail=f"GCS 이미지 삭제(경로: {record.gcs_path})에 실패하여 DB 기록 삭제를 취소합니다. 잠시 후 다시 시도해 주세요."
             )
+        # GCS 장애 시 DB 레코드 삭제 가능해야 함.
+        # delete_from_gcs(record.gcs_path)
 
     # 연관된 exchange 기록 삭제 (cascade 설정에 따라 불필요할 수 있으나 안전을 위해 명시)
     if record.exchanges:

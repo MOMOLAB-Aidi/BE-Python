@@ -98,10 +98,9 @@ def delete_from_gcs(gcs_path: str) -> bool:
 
         blob.delete()
         logger.info(f"GCS 삭제 완료: gs://{GCS_BUCKET_NAME}/{gcs_path}")
-        return True
     except Exception as e:
-        print(f"GCS 삭제 실패: {type(e).__name__}: {e}")
-        return False
+        logger.exception("GCS 삭제 실패")
+        raise OcrError("GCS 삭제 중 오류가 발생했습니다.", is_client_error=False) from e
 
 
 # 바이트 + MIME 타입을 받아 gemini로 OCR을 수행 -> 텍스트를 json 형태로 반환

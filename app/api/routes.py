@@ -1,5 +1,4 @@
 import hashlib
-from sysconfig import get_scheme_names
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status
 from pydantic import BaseModel

@@ -30,7 +30,7 @@ class Record(Base):
 
     total_uf = Column(Integer, nullable=False)  # 제수량 합계
 
-    gcs_path: str = Column(String(512), nullable=True) # GCS에 저장된 OCR 이미지 파일 경로
+    gcs_path = Column(String(512), nullable=True) # GCS에 저장된 OCR 이미지 파일 경로
 
     # 관계: 회차별 데이터
     exchanges = relationship(
