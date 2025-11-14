@@ -258,10 +258,16 @@ def ocr_and_save(
         # 3. GCS 업로드
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # 파일 MIME 타입에 따라 확장자 결정
+        # 파일 MIME 타입에 따라 확장자와 content_type 결정
+        content_type = file.content_type or "image/jpeg"
         ext = "jpg"
-        if file.content_type and "png" in file.content_type.lower():
+
+        if "png" in content_type.lower():
             ext = "png"
+            content_type = "image/png"
+        elif "jpeg" in content_type.lower() or "jpg" in content_type.lower():
+            ext = "jpg"
+            content_type = "image/jpeg"
 
         filename = f"ocr_{rec.record_date}_{timestamp}.{ext}"
 
@@ -270,7 +276,7 @@ def ocr_and_save(
             user_hash=user_hash,
             record_date=rec.record_date.strftime("%Y%m%d"),
             filename=filename,
-            content_type=file.content_type or "image/jpeg"
+            content_type=content_type
         )
 
         # 관계 선로딩 후 스냅샷 반환 + 세션 종료 후 lazy-load 에러 방지
