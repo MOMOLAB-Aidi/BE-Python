@@ -247,7 +247,7 @@ def delete_record_route(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"서버 오류 발생: {str(e)}")
+        raise HTTPException(status_code=500, detail="기록 삭제 중 서버 오류가 발생했습니다.") from e
 
 
 # 파일 업로드 -> OCR 텍스트 추출 -> JSON 반환 -> db 저장 api
