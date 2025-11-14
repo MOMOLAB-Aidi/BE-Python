@@ -242,11 +242,10 @@ def delete_record_route(
 ):
     try:
         delete_record(db, rec_id, current_user.id)
-
         return Response(status_code=204)
 
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"서버 오류 발생: {str(e)}")
 

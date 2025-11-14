@@ -280,11 +280,6 @@ def delete_record(db: Session, rec_id: int, user_id: int) -> None:
         # GCS 장애 시 DB 레코드 삭제 가능해야 함.
         # delete_from_gcs(record.gcs_path)
 
-    # 연관된 exchange 기록 삭제 (cascade 설정에 따라 불필요할 수 있으나 안전을 위해 명시)
-    if record.exchanges:
-        for exchange in record.exchanges:
-            db.delete(exchange)
-
     # record 삭제
     db.delete(record)
     db.commit()
