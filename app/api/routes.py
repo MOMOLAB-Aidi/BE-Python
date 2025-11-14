@@ -1,4 +1,5 @@
 import hashlib
+import logging
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status
 from pydantic import BaseModel
@@ -18,11 +19,13 @@ from app.core.auth import get_current_active_user as AuthTokenDep
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
-    upload_to_gcs
+    upload_to_gcs, delete_from_gcs
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
     create_record_common, patch_exchange, delete_record
 
 router = APIRouter()
+
+logger = logging.getLogger(__name__)
 
 
 class RecordCreateResponse(BaseModel):
@@ -311,6 +314,10 @@ def ocr_and_save(
         except Exception:
             # GCS 업로드는 성공했지만 DB 업데이트 실패 - GCS 파일 삭제
             db.rollback()
+            try:
+                delete_from_gcs(gcs_path_result)
+            except Exception:
+                logger.exception(f"롤백 중 GCS 파일 삭제 실패: {gcs_path_result}")
             raise
 
 
