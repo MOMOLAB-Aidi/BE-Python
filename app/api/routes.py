@@ -286,14 +286,12 @@ def ocr_and_save(
         return JSONResponse(record_to_dict(rec))
 
     except OcrError as e:
-        if e.is_client_error():
-            raise HTTPException(status_code=400, detail=str(e))
-        else:
-            raise HTTPException(status_code=500, detail=str(e))
+        status_code = 400 if e.is_client_error() else 500
+        raise HTTPException(status_code=status_code, detail=str(e)) from e
     except HTTPException:
         raise
     except ValueError as e:
         # save_pdrecord_json 내부 검증(필수값, 형식) 에러
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from e

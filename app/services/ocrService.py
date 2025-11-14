@@ -79,8 +79,7 @@ def upload_to_gcs(
 # GCS에서 파일을 바이트로 다운로드
 def download_from_gcs(gcs_path: str) -> bytes:
     try:
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(GCS_BUCKET_NAME)
+        bucket = _get_bucket()
         blob = bucket.blob(gcs_path)
 
         file_bytes = blob.download_as_bytes()
@@ -88,6 +87,7 @@ def download_from_gcs(gcs_path: str) -> bytes:
 
         return file_bytes
     except Exception as e:
+        logger.exception("GCS 다운로드 실패")
         raise OcrError(f"GCS 다운로드 실패: {type(e).__name__}: {e}") from e
 
 
@@ -95,29 +95,13 @@ def download_from_gcs(gcs_path: str) -> bytes:
 def ocr_bytes_to_pdrecord_json(
     file_bytes: bytes,
     content_type: str,
-    model: str = "gemini-2.5-flash",
-    save_to_gcs: bool = False,
-    user_hash: Optional[str] = None,
-    gcs_filename: Optional[str] = None,
+    model: str = "gemini-2.5-flash"
 ) -> Dict[str, Any]:
     if not file_bytes:
         raise OcrError("빈 파일입니다.")
     if content_type not in ALLOWED_MIME:
         allowed = ", ".join(sorted(ALLOWED_MIME))
         raise OcrError(f"지원하지 않는 형식입니다. 허용: {allowed}")
-
-    # GCS에 저장
-    if save_to_gcs:
-        if not user_hash:
-            raise OcrError("save_to_gcs=True일 때 user_hash가 필요합니다.")
-
-        if gcs_filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            ext = "jpg" if content_type == "image/jpeg" else "png"
-            gcs_filename = f"ocr_{timestamp}.{ext}"
-
-        upload_to_gcs(file_bytes, user_hash, gcs_filename, content_type)
-
 
     prompt = (
         "다음 이미지는 '복막투석기록일지'야. 표 안의 **실제 값**을 읽어 "
@@ -182,11 +166,12 @@ def ocr_bytes_to_pdrecord_json(
         data.setdefault("blood_pressure", {"systolic": None, "diastolic": None})
         return data
 
-    # 모델이 JSON 이외의 응답을 출력하는 경우
-    except json.JSONDecodeError:
-        raise OcrError("모델이 JSON이 아닌 응답을 반환했습니다. 프롬프트/이미지를 확인하세요.")
+    except json.JSONDecodeError as e:
+        logger.exception("모델 JSON 파싱 실패")
+        raise OcrError("OCR 처리 중 서버 오류가 발생했습니다.", is_client_error=False) from e
     except Exception as e:
-        raise OcrError(f"OCR 처리 실패: {type(e).__name__}: {e}") from e
+        logger.exception("OCR 처리 실패")
+        raise OcrError("OCR 처리 중 서버 오류가 발생했습니다.", is_client_error=False) from e
 
 
 WEEK_KR = ["월","화","수","목","금","토","일"]
