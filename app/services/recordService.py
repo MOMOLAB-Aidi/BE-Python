@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db_models.record import Record
 from app.db_models.record_exchange import RecordExchange
-from app.services.ocrService import delete_from_gcs
+from app.services.ocrService import delete_from_gcs, OcrError
 
 
 # =========================
@@ -269,16 +269,16 @@ def delete_record(db: Session, rec_id: int, user_id: int) -> None:
     if record.user_id != user_id:
         raise HTTPException(status_code=403, detail="기록을 삭제할 권한이 없습니다.")
 
-    # GCS 이미지 삭제 🗑
+    # GCS 이미지 삭제
     if record.gcs_path:
         # GCS 삭제 실패 시 DB 트랜잭션도 함께 중단
-        if not delete_from_gcs(record.gcs_path):
+        try:
+            delete_from_gcs(record.gcs_path)
+        except OcrError as e:
             raise HTTPException(
                 status_code=500,
                 detail=f"GCS 이미지 삭제(경로: {record.gcs_path})에 실패하여 DB 기록 삭제를 취소합니다. 잠시 후 다시 시도해 주세요."
-            )
-        # GCS 장애 시 DB 레코드 삭제 가능해야 함.
-        # delete_from_gcs(record.gcs_path)
+            ) from e
 
     # record 삭제
     db.delete(record)

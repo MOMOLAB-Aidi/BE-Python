@@ -303,9 +303,16 @@ def ocr_and_save(
             content_type=content_type
         )
 
-        rec.gcs_path = gcs_path_result
-        db.add(rec)
-        db.commit()
+        # 새로운 트랜잭션으로 gcs_path 업데이트
+        try:
+            rec.gcs_path = gcs_path_result
+            db.add(rec)
+            db.commit()
+        except Exception:
+            # GCS 업로드는 성공했지만 DB 업데이트 실패 - GCS 파일 삭제
+            db.rollback()
+            raise
+
 
         # 관계 선로딩 후 스냅샷 반환 + 세션 종료 후 lazy-load 에러 방지
         rec = (

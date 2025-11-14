@@ -91,7 +91,7 @@ def download_from_gcs(gcs_path: str) -> bytes:
         raise OcrError("GCS 다운로드 중 오류가 발생했습니다.", is_client_error=False) from e
 
 
-def delete_from_gcs(gcs_path: str) -> bool:
+def delete_from_gcs(gcs_path: str) -> None:
     try:
         bucket = _get_bucket()
         blob = bucket.blob(gcs_path)
