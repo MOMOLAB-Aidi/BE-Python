@@ -5,7 +5,7 @@ from typing import List
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status, Query
 from pydantic import BaseModel
 from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date, datetime
 
@@ -197,6 +197,7 @@ def get_records(
         db: Session = Depends(get_db),
         current_user: User = Depends(AuthTokenDep)
 ) -> List[dict]:
+
     try:
         records = (
             db.query(Record)
@@ -208,9 +209,12 @@ def get_records(
             .order_by(Record.record_date.desc())  # 날짜 순으로 정렬
             .all()
         )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"데이터베이스 조회 오류: {str(e)}")
+    except SQLAlchemyError as e:
+        logging.exception("기록 목록 조회 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="기록 목록 조회 중 서버 오류가 발생했습니다.",
+        ) from e
 
     if not records:
         return []
