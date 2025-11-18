@@ -177,8 +177,8 @@ def patch_record_exchange(
     description="특정 년도와 월에 해당하는 환자의 모든 투석기록을 조회합니다."
 )
 def get_records(
-        year: int = Query(..., ge=2000, description="조회할 기록의 연도 (예: 2025)"),
-        month: int = Query(..., ge=1, le=12, description="조회할 기록의 월 (예: 11)"),
+        year: int = Query(2025, ge=2000, description="조회할 기록의 연도"),
+        month: int = Query(11, ge=1, le=12, description="조회할 기록의 월"),
         db: Session = Depends(get_db),
         current_user: User = Depends(AuthTokenDep)
 ) -> List[dict]:
