@@ -252,8 +252,8 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session, user_id: int) -> Recor
     if total_uf_raw is not None:
         try:
             total_uf = int(total_uf_raw)
-        except (ValueError, TypeError):
-            raise ValueError(f"제수량 합계는 정수여야 합니다: {total_uf_raw}")
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"제수량 합계는 정수여야 합니다: {total_uf_raw}") from e
 
     # 동일 날짜 존재 여부 체크
     existing = (
