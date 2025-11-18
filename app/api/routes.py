@@ -1,13 +1,13 @@
 import hashlib
 import logging
+from typing import List
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status, Query
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date, datetime
-
-from starlette.responses import JSONResponse
 
 from app.core.db import get_db
 
@@ -16,7 +16,6 @@ from app.db_models.record_exchange import RecordExchange
 from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
-from app.models.ocrSchemas import OcrSaveRequest
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
@@ -53,7 +52,7 @@ def create_record_common_route(
         return RecordCreateResponse(id=rec.id)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="해당 날짜의 기록이 이미 존재합니다.")
+        raise HTTPException(status_code=409, detail="이미 해당 날짜에 기록이 존재합니다.")
 
 
 # 복막투석기록 공통 정보 수정 api
@@ -104,13 +103,14 @@ def patch_record_common(
     db.refresh(rec)
     return Response(status_code=204)
 
+MAX_EXCHANGES = 5
 
 # 복막투석기록 회차 정보 생성 api
 @router.post(
     "/api/v1/records/{rec_id}/exchanges",
     tags=["복막투석기록-회차"],
     summary="회차 정보 생성",
-    description="특정 기록에 회차 정보를 생성합니다.",
+    description="특정 기록에 회차 정보를 생성합니다. 최대 5개까지 작성할 수 있습니다.",
     status_code=204,
     responses={204: {"description": "성공입니다"}},
 )
@@ -120,12 +120,26 @@ def create_record_exchange(
         db: Session = Depends(get_db),
         current_user: User = Depends(AuthTokenDep)
 ):
-    rec = db.get(Record, rec_id)
+    rec = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))
+        .filter(Record.id == rec_id)
+        .first()
+    )
+
     if not rec:
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
 
     if rec.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="생성 권한이 없습니다.")
+
+    current_exchange_count = len(rec.exchanges)
+
+    if current_exchange_count >= MAX_EXCHANGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"기록 하나당 최대 {MAX_EXCHANGES}개의 회차만 생성할 수 있습니다."
+        )
 
     p = payload.model_dump()
     create_exchange(rec, p, user_id=current_user.id)
@@ -170,12 +184,51 @@ def patch_record_exchange(
     return Response(status_code=204)
 
 
+# 모든 복막투석기록 조회 api (공통 + 회차)
+@router.get(
+    "/api/v1/records",
+    tags=["복막투석기록"],
+    summary="환자의 모든 기록 조회",
+    description="특정 년도와 월에 해당하는 환자의 모든 투석기록을 조회합니다."
+)
+def get_records(
+        year: int = Query(2025, ge=2000, description="조회할 기록의 연도"),
+        month: int = Query(11, ge=1, le=12, description="조회할 기록의 월"),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+) -> List[dict]:
+
+    try:
+        records = (
+            db.query(Record)
+            # Record와 exchanges를 미리 로드하여 N+1 쿼리 문제를 방지
+            .options(joinedload(Record.exchanges))
+            .filter(Record.user_id == current_user.id)
+            .filter(func.extract('year', Record.record_date) == year)
+            .filter(func.extract('month', Record.record_date) == month)
+            .order_by(Record.record_date.desc())  # 날짜 순으로 정렬
+            .all()
+        )
+    except SQLAlchemyError as e:
+        logging.exception("기록 목록 조회 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="기록 목록 조회 중 서버 오류가 발생했습니다.",
+        ) from e
+
+    if not records:
+        return []
+
+    # 조회된 Record 객체 리스트를 딕셔너리 리스트로 변환하여 반환
+    return [rec_to_dict(rec) for rec in records]
+
+
 # 특정 복막투석기록 조회 api (공통 + 회차)
 @router.get(
     "/api/v1/records/{rec_id}",
     tags=["복막투석기록"],
-    summary="전체 기록 조회",
-    description="특정 복막투석기록(공통 + 회차 전체)을 조회합니다."
+    summary="환자의 특정 기록 조회",
+    description="특정 투석기록(공통 + 회차 전체)을 조회합니다."
 )
 def get_record(
         rec_id: int,
