@@ -1,7 +1,7 @@
 import hashlib
 import logging
 
-from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status
+from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status, Query
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -20,7 +20,7 @@ from app.models.ocrSchemas import OcrSaveRequest
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
-    upload_to_gcs, delete_from_gcs
+    upload_to_gcs, delete_from_gcs, download_from_gcs
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
     create_record_common, patch_exchange, delete_record
 
@@ -315,3 +315,25 @@ def ocr_temp(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from e
+
+
+@router.get(
+    "/api/v1/records/ocr/image",
+    tags=["복막투석기록-ocr"],
+    summary="OCR 이미지 다운로드",
+    description="gcs_path에 해당하는 OCR 이미지를 반환합니다.",
+)
+def get_ocr_image(
+    gcs_path: str = Query(..., description="GCS 내부 경로"),
+):
+    try:
+        # GCS에서 실제 바이트 다운로드
+        file_bytes = download_from_gcs(gcs_path)
+
+        content_type = "image/jpeg"
+        if gcs_path.lower().endswith(".png"):
+            content_type = "image/png"
+
+        return Response(content=file_bytes, media_type=content_type)
+    except Exception:
+        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
