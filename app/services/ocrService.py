@@ -247,7 +247,13 @@ def save_pdrecord_json(data: Dict[str, Any], db: Session, user_id: int) -> Recor
         raise ValueError("turbidity는 '없음' 또는 '있음'이어야 합니다.")
 
     notes = data.get("notes")
-    total_uf = _to_int_required(data.get("total_uf"), "total_uf")
+    total_uf_raw = data.get("total_uf")
+    total_uf = None
+    if total_uf_raw is not None:
+        try:
+            total_uf = int(total_uf_raw)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"제수량 합계는 정수여야 합니다: {total_uf_raw}") from e
 
     # 동일 날짜 존재 여부 체크
     existing = (
