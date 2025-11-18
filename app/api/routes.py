@@ -16,6 +16,7 @@ from app.db_models.record_exchange import RecordExchange
 from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
+from app.models.ocrSchemas import OcrSaveRequest
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
@@ -253,17 +254,15 @@ def delete_record_route(
         raise HTTPException(status_code=500, detail="기록 삭제 중 서버 오류가 발생했습니다.") from e
 
 
-# 파일 업로드 -> OCR 텍스트 추출 -> JSON 반환 -> db 저장 api
 @router.post(
-    "/api/v1/ocr",
-    tags=["복막투석기록"],
-    summary="ocr 텍스트 추출 후 저장",
-    description="파일을 업로드하면 OCR 기능으로 텍스트를 추출하여 db에 저장합니다."
+    "/api/v1/records/ocr",
+    tags=["복막투석기록-ocr"],
+    summary="OCR 인식 후 텍스트 추출",
+    description="이미지 파일을 업로드하면 OCR을 수행하여 구조화된 JSON과 GCS 경로를 반환합니다.",
 )
-def ocr_and_save(
-        file: UploadFile = File(...),
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
+def ocr_temp(
+    file: UploadFile = File(...),
+    current_user: User = Depends(AuthTokenDep),
 ):
     try:
         raw = file.file.read()
@@ -273,19 +272,9 @@ def ocr_and_save(
         # 사용자 해시값 생성
         user_hash = hashlib.sha256(str(current_user.id).encode()).hexdigest()[:16]
 
-        # 1. OCR만 처리: 409 에러가 발생했음에도 이미지가 저장되는 문제가 존재
-        data = ocr_bytes_to_pdrecord_json(
-            file_bytes=raw,
-            content_type=file.content_type or "application/octet-stream"
-        )
-
-        # 2. DB 저장
-        rec = save_pdrecord_json(data, db, user_id=current_user.id)
-
-        # 3. GCS 업로드
+        # GCS에 이미지 업로드 (추후에 record 삭제하면 gcs_path 컬럼에 담긴 경로 삭제 -> GCS에서 해당 이미지 또한 삭제)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # 파일 MIME 타입에 따라 확장자와 content_type 결정
         content_type = file.content_type or "image/jpeg"
         ext = "jpg"
 
@@ -296,48 +285,33 @@ def ocr_and_save(
             ext = "jpg"
             content_type = "image/jpeg"
 
-        filename = f"ocr_{rec.record_date}_{timestamp}.{ext}"
+        today_str = datetime.now().strftime("%Y%m%d")
+        filename = f"ocr_temp_{timestamp}.{ext}"
 
         gcs_path_result = upload_to_gcs(
             file_bytes=raw,
             user_hash=user_hash,
-            record_date=rec.record_date.strftime("%Y%m%d"),
+            record_date=today_str,
             filename=filename,
-            content_type=content_type
+            content_type=content_type,
         )
 
-        # 새로운 트랜잭션으로 gcs_path 업데이트
-        try:
-            rec.gcs_path = gcs_path_result
-            db.add(rec)
-            db.commit()
-        except Exception:
-            # GCS 업로드는 성공했지만 DB 업데이트 실패 - GCS 파일 삭제
-            db.rollback()
-            try:
-                delete_from_gcs(gcs_path_result)
-            except Exception:
-                logger.exception(f"롤백 중 GCS 파일 삭제 실패: {gcs_path_result}")
-            raise
-
-
-        # 관계 선로딩 후 스냅샷 반환 + 세션 종료 후 lazy-load 에러 방지
-        rec = (
-            db.query(type(rec))
-            .options(joinedload(Record.exchanges))
-            .filter_by(id=rec.id)
-            .one()
+        ocr_data = ocr_bytes_to_pdrecord_json(
+            file_bytes=raw,
+            content_type=content_type,
         )
 
-        return JSONResponse(record_to_dict(rec))
+        # 프론트에서 호출 후 수기 작성 api로 저장
+        return {
+            "gcs_path": gcs_path_result,
+            "ocr_data": ocr_data,
+        }
 
     except OcrError as e:
+        # OCR 관련 커스텀 에러
         status_code = 400 if e.is_client_error() else 500
         raise HTTPException(status_code=status_code, detail=str(e)) from e
     except HTTPException:
         raise
-    except ValueError as e:
-        # save_pdrecord_json 내부 검증(필수값, 형식) 에러
-        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from e

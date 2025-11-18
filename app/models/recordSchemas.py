@@ -31,7 +31,7 @@ class RecordExchangeCreate(ORMBase):
             }
         }
     )
-    exchange_no: Optional[int] = Field(None, ge=1, le=12, description="구분(회차)", json_schema_extra={"readOnly": True})
+    exchange_no: Optional[int] = Field(None, ge=1, le=5, description="구분(회차)", json_schema_extra={"readOnly": True})
     exchange_time: TimeStr = Field(..., description="HH:MM 또는 HH:MM:SS")
     drain_volume: int = Field(..., ge=0, le=6000)
     fill_volume: int = Field(..., ge=0, le=6000)
@@ -91,7 +91,7 @@ class RecordCommonCreate(ORMBase):
     urine_count: int = Field(..., ge=0, le=50)
     turbidity: Turbidity = Field(..., description="혼탁도(없음/있음)")
     notes: Optional[str] = Field(None, max_length=2000)
-    total_uf: int = Field(..., ge=-5000, le=5000)
+    total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
 
 # 공통 정보 수정 스키마
 class RecordCommonPatch(ORMBase):

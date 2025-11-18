@@ -36,7 +36,7 @@ def parse_time(s: str) -> dtime:
 def _next_exchange_no(rec: Record) -> int:
     exists = [e.exchange_no for e in (rec.exchanges or [])]
     next_no = (max(exists) + 1) if exists else 1
-    vrng(1 <= next_no <= 12, "최대 12회차까지 등록 가능합니다.")
+    vrng(1 <= next_no <= 5, "최대 5회차까지 등록 가능합니다.")
     return next_no
 
 
@@ -112,7 +112,6 @@ def _require_fields_for_create(rec: Record):
     vrng(rec.fasting_glucose is not None, "fasting_glucose는 필수입니다.")
     vrng(rec.urine_count is not None, "urine_count는 필수입니다.")
     vrng(rec.turbidity in {"없음","있음"}, "turbidity는 '없음' 또는 '있음'이어야 합니다.")
-    vrng(rec.total_uf is not None, "total_uf는 필수입니다.")
 
 
 # 공통 정보 생성용 객체 빌더
@@ -192,7 +191,7 @@ def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_owner
         rec.notes = str(p["notes"])[:2000]
 
     if "total_uf" in p and p["total_uf"] is not None:
-        rec.total_uf = _as_int_in(p["total_uf"], -5000, 5000, "total_uf")
+        rec.total_uf = p["total_uf"]
 
 
 # =========================
@@ -201,7 +200,7 @@ def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_owner
 def _require_exchange_no(p: Dict[str, Any]) -> int:
     vrng("exchange_no" in p and p["exchange_no"] is not None, "회차(개별)에는 exchange_no가 필요합니다.")
     ex_no = int(p["exchange_no"])
-    vrng(1 <= ex_no <= 12, "회차는 1~12 범위")
+    vrng(1 <= ex_no <= 5, "회차는 1~5 범위")
     return ex_no
 
 def _apply_exchange_fields(target: RecordExchange, p: Dict[str, Any]) -> None:

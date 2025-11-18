@@ -28,7 +28,7 @@ class Record(Base):
     turbidity = Column(TurbidityEnum, nullable=False)  # 복막액 혼탁(없음/있음)
     notes = Column(Text, nullable=True) # 비고
 
-    total_uf = Column(Integer, nullable=False)  # 제수량 합계
+    total_uf = Column(Integer, nullable=True)  # 제수량 합계
 
     gcs_path = Column(String(512), nullable=True) # GCS에 저장된 OCR 이미지 파일 경로
 
