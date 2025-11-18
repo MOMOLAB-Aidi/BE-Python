@@ -52,7 +52,7 @@ def create_record_common_route(
         return RecordCreateResponse(id=rec.id)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="해당 날짜의 기록이 이미 존재합니다.")
+        raise HTTPException(status_code=409, detail="이미 해당 날짜에 기록이 존재합니다.")
 
 
 # 복막투석기록 공통 정보 수정 api
@@ -103,13 +103,14 @@ def patch_record_common(
     db.refresh(rec)
     return Response(status_code=204)
 
+MAX_EXCHANGES = 5
 
 # 복막투석기록 회차 정보 생성 api
 @router.post(
     "/api/v1/records/{rec_id}/exchanges",
     tags=["복막투석기록-회차"],
     summary="회차 정보 생성",
-    description="특정 기록에 회차 정보를 생성합니다.",
+    description="특정 기록에 회차 정보를 생성합니다. 최대 5개까지 작성할 수 있습니다.",
     status_code=204,
     responses={204: {"description": "성공입니다"}},
 )
@@ -119,12 +120,26 @@ def create_record_exchange(
         db: Session = Depends(get_db),
         current_user: User = Depends(AuthTokenDep)
 ):
-    rec = db.get(Record, rec_id)
+    rec = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))
+        .filter(Record.id == rec_id)
+        .first()
+    )
+
     if not rec:
         raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
 
     if rec.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="생성 권한이 없습니다.")
+
+    current_exchange_count = len(rec.exchanges)
+
+    if current_exchange_count >= MAX_EXCHANGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"기록 하나당 최대 {MAX_EXCHANGES}개의 회차만 생성할 수 있습니다."
+        )
 
     p = payload.model_dump()
     create_exchange(rec, p, user_id=current_user.id)
