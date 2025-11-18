@@ -296,10 +296,18 @@ def ocr_temp(
             content_type=content_type,
         )
 
-        ocr_data = ocr_bytes_to_pdrecord_json(
-            file_bytes=raw,
-            content_type=content_type,
-        )
+        try:
+            ocr_data = ocr_bytes_to_pdrecord_json(
+                file_bytes=raw,
+                content_type=content_type,
+            )
+        except Exception:
+            # OCR 실패 시 업로드된 GCS 파일 삭제
+            try:
+                delete_from_gcs(gcs_path_result)
+            except Exception:
+                logger.exception("GCS 정리 실패")
+            raise
 
         # 프론트에서 호출 후 수기 작성 api로 저장
         return {
@@ -325,8 +333,14 @@ def ocr_temp(
 )
 def get_ocr_image(
     gcs_path: str = Query(..., description="GCS 내부 경로"),
+    current_user: User = Depends(AuthTokenDep),
 ):
     try:
+        # 경로가 현재 사용자의 경로인지 검증
+        user_hash = hashlib.sha256(str(current_user.id).encode()).hexdigest()[:16]
+        if not gcs_path.startswith(f"users/{user_hash}/"):
+            raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
+
         # GCS에서 실제 바이트 다운로드
         file_bytes = download_from_gcs(gcs_path)
 
@@ -335,5 +349,11 @@ def get_ocr_image(
             content_type = "image/png"
 
         return Response(content=file_bytes, media_type=content_type)
-    except Exception:
-        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
+    except HTTPException:
+        raise
+    except OcrError as e:
+        status_code = 400 if e.is_client_error() else 500
+        raise HTTPException(status_code=status_code, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("이미지 다운로드 실패")
+        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.") from e

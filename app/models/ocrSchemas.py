@@ -19,5 +19,5 @@ class RecordFinalizeBody(ORMBase):
     fasting_glucose: int
     urine_count: int
     turbidity: str
-    total_uf: int
+    total_uf: Optional[int] = None
     notes: Optional[str] = None
