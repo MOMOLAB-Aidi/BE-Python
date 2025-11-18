@@ -1,13 +1,13 @@
 import hashlib
 import logging
+from typing import List
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status, Query
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date, datetime
-
-from starlette.responses import JSONResponse
 
 from app.core.db import get_db
 
@@ -16,7 +16,6 @@ from app.db_models.record_exchange import RecordExchange
 from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
-from app.models.ocrSchemas import OcrSaveRequest
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
@@ -170,12 +169,47 @@ def patch_record_exchange(
     return Response(status_code=204)
 
 
+# 모든 복막투석기록 조회 api (공통 + 회차)
+@router.get(
+    "/api/v1/records",
+    tags=["복막투석기록"],
+    summary="환자의 모든 기록 조회",
+    description="특정 년도와 월에 해당하는 환자의 모든 투석기록을 조회합니다."
+)
+def get_records(
+        year: int = Query(..., ge=2000, description="조회할 기록의 연도 (예: 2025)"),
+        month: int = Query(..., ge=1, le=12, description="조회할 기록의 월 (예: 11)"),
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+) -> List[dict]:
+    try:
+        records = (
+            db.query(Record)
+            # Record와 exchanges를 미리 로드하여 N+1 쿼리 문제를 방지
+            .options(joinedload(Record.exchanges))
+            .filter(Record.user_id == current_user.id)
+            .filter(func.extract('year', Record.record_date) == year)
+            .filter(func.extract('month', Record.record_date) == month)
+            .order_by(Record.record_date.desc())  # 날짜 순으로 정렬
+            .all()
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"데이터베이스 조회 오류: {str(e)}")
+
+    if not records:
+        return []
+
+    # 조회된 Record 객체 리스트를 딕셔너리 리스트로 변환하여 반환
+    return [rec_to_dict(rec) for rec in records]
+
+
 # 특정 복막투석기록 조회 api (공통 + 회차)
 @router.get(
     "/api/v1/records/{rec_id}",
     tags=["복막투석기록"],
-    summary="전체 기록 조회",
-    description="특정 복막투석기록(공통 + 회차 전체)을 조회합니다."
+    summary="환자의 특정 기록 조회",
+    description="특정 투석기록(공통 + 회차 전체)을 조회합니다."
 )
 def get_record(
         rec_id: int,
