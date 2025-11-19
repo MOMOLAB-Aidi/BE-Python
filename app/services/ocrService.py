@@ -1,20 +1,13 @@
 import json
 import logging
 import os
-from datetime import date, datetime, time
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any
 
 from dotenv import load_dotenv
-from fastapi import HTTPException
 from google import genai
 from base64 import b64encode
 
 from google.cloud import storage
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
-from app.db_models.record import Record
-from app.db_models.record_exchange import RecordExchange
 
 load_dotenv()
 

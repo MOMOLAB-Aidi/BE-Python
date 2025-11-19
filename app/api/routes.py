@@ -429,7 +429,7 @@ def start_chat_session():
     if consultService.start_new_session(session_id):
         return SessionStartResponse(
             session_id=session_id,
-            message="안녕하세요! 복막투석 AI 상담사입니다. 투석 관리, 식단, 건강 상태 등에 대해 무엇이든 물어보세요."
+            message="안녕하세요! 복막투석 AI 상담사입니다. 투석 관리, 일반 지침, 건강 상태 등에 대해 무엇이든 물어보세요."
         )
     else:
         # Gemini 클라이언트 초기화 실패 시 500 에러 발생
