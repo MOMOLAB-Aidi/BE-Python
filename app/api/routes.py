@@ -21,7 +21,7 @@ from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, Reco
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, \
     upload_to_gcs, delete_from_gcs, download_from_gcs
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
-    create_record_common, patch_exchange, delete_record
+    create_record_common, patch_exchange, delete_record, get_latest_records
 
 router = APIRouter()
 
@@ -214,6 +214,34 @@ def get_records(
         raise HTTPException(
             status_code=500,
             detail="기록 목록 조회 중 서버 오류가 발생했습니다.",
+        ) from e
+
+    if not records:
+        return []
+
+    # 조회된 Record 객체 리스트를 딕셔너리 리스트로 변환하여 반환
+    return [rec_to_dict(rec) for rec in records]
+
+
+@router.get(
+    "/api/v1/records/latest",
+    tags=["복막투석기록"],
+    summary="환자의 가장 최근 3개의 기록 조회",
+    description="환자의 가장 최근 3개의 기록을 조회합니다."
+)
+def get_latest_records_routes(
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+) -> List[dict]:
+
+    try:
+        records = get_latest_records(db, current_user.id)
+
+    except SQLAlchemyError as e:
+        logging.exception("최신 기록 목록 조회 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="최신 기록 목록 조회 중 서버 오류가 발생했습니다.",
         ) from e
 
     if not records:
