@@ -222,14 +222,13 @@ def find_exchange(rec: Record, exchange_no: int) -> Optional[RecordExchange]:
 
 # 환자의 가장 최근 3개의 기록 조회
 def get_latest_records(db: Session, user_id: int) -> List[Record]:
-    LIMIT_COUNT = 3
 
     records = (
         db.query(Record)
         .options(joinedload(Record.exchanges))  # N+1 문제 방지
         .filter(Record.user_id == user_id)
         .order_by(Record.record_date.desc())
-        .limit(LIMIT_COUNT)
+        .limit(3)
         .all()
     )
 
