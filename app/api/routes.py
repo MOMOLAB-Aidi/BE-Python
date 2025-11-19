@@ -450,17 +450,17 @@ def get_ocr_image(
      description="새로운 복막투석 상담 세션을 시작하고 고유한 세션 ID를 발급합니다.",
      response_model=SessionStartResponse,
 )
-def start_chat_session():
+def start_chat_session(user_id: int):
     session_id = str(uuid.uuid4())
 
     # 세션 생성 로직 호출
-    if consultService.start_new_session(session_id):
+    if consultService.start_new_session(user_id, session_id):
         return SessionStartResponse(
             session_id=session_id,
             message="안녕하세요! 복막투석 AI 상담사입니다. 투석 관리, 일반 지침, 건강 상태 등에 대해 무엇이든 물어보세요."
         )
     else:
-        # Gemini 클라이언트 초기화 실패 시 500 에러 발생
+        # gemini 클라이언트 초기화 실패 시 500 에러 발생
         raise HTTPException(status_code=500, detail="상담 에이전트 서비스 초기화에 실패했습니다. 서버 로그를 확인해주세요.")
 
 
@@ -470,17 +470,17 @@ def start_chat_session():
      description="세션 ID를 사용하여 에이전트와 대화를 나눕니다.",
      response_model=ChatResponse,
 )
-def send_chat_message(request: ChatRequest):
+def send_chat_message(request: ChatRequest, db: Session = Depends(get_db)):
 
     # 세션 활성화 상태 확인
-    if not consultService.get_session_status(request.session_id):
+    if not consultService.get_session_status(request.user_id, request.session_id):
         raise HTTPException(
             status_code=404,
             detail="활성화된 세션을 찾을 수 없습니다. `/start`를 통해 세션을 시작해주세요."
         )
 
     # agentService를 통해 응답 생성
-    response_text = consultService.get_agent_response(request.session_id, request.message)
+    response_text = consultService.get_agent_response(db, request.user_id, request.session_id, request.message)
 
     return ChatResponse(
         session_id=request.session_id,
@@ -495,15 +495,16 @@ def send_chat_message(request: ChatRequest):
 )
 def end_chat_session(request: SessionEndRequest):
     session_id = request.session_id
+    user_id = request.user_id
 
     if not session_id:
         raise HTTPException(status_code=400, detail="세션 ID가 요청 본문에 포함되어야 합니다.")
 
-    if consultService.end_session(session_id):
+    if consultService.end_session(user_id, session_id):
         return SessionEndResponse(
             session_id=session_id,
             status="세션이 성공적으로 종료되었습니다. 이용해 주셔서 감사합니다."
         )
     else:
-        # 종료할 세션이 메모리에 없을 경우 404 에러
+        # 종료할 세션이 메모리에 없거나 user_id가 소유자와 불일치할 경우 404 에러
         raise HTTPException(status_code=404, detail="종료할 활성화된 세션을 찾을 수 없습니다.")

@@ -36,3 +36,9 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+
+    consult_log_list = relationship(
+        "ConsultLog",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
