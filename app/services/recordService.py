@@ -1,10 +1,10 @@
 import re
 from datetime import time as dtime, date
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import date as _date
 
 from fastapi import HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db_models.record import Record
 from app.db_models.record_exchange import RecordExchange
@@ -218,6 +218,22 @@ def find_exchange(rec: Record, exchange_no: int) -> Optional[RecordExchange]:
         if e.exchange_no == exchange_no:
             return e
     return None
+
+
+# 환자의 가장 최근 3개의 기록 조회
+def get_latest_records(db: Session, user_id: int) -> List[Record]:
+
+    records = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))  # N+1 문제 방지
+        .filter(Record.user_id == user_id)
+        .order_by(Record.record_date.desc())
+        .limit(3)
+        .all()
+    )
+
+    return records
+
 
 # 존재하는 회차만 수정
 def patch_exchange(rec: Record, p: Dict[str, Any], user_id: int) -> RecordExchange:
