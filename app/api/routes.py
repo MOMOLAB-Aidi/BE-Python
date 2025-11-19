@@ -18,7 +18,7 @@ from app.db_models.user import User
 from app.core.auth import get_current_active_user as AuthTokenDep
 
 from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
-from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, save_pdrecord_json, record_to_dict, \
+from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, \
     upload_to_gcs, delete_from_gcs, download_from_gcs
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
     create_record_common, patch_exchange, delete_record

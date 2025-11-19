@@ -98,6 +98,7 @@ def rec_to_dict(r: Record) -> Dict[str, Any]:
         "turbidity": r.turbidity,
         "notes": r.notes,
         "total_uf": r.total_uf,
+        "gcs_path": r.gcs_path,
         "exchanges": [ex_to_dict(e) for e in (r.exchanges or [])],
     }
 
