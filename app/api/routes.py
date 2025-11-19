@@ -1,7 +1,7 @@
 import hashlib
 import logging
 import uuid
-from typing import List, Dict
+from typing import List
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status, Query
 from pydantic import BaseModel

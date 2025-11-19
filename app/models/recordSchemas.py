@@ -54,16 +54,6 @@ class RecordExchangePatch(ORMBase):
     fill_concentration: Optional[float] = Field(None, ge=0, le=100)
     uf: Optional[int] = Field(None, ge=-500, le=500)
 
-# 회차 정보 조회 스키마
-class RecordExchangeRead(ORMBase):
-    id: int
-    exchange_no: int
-    exchange_time: str
-    drain_volume: int
-    fill_volume: int
-    fill_concentration: float
-    uf: int
-
 # 공통 정보 생성 스키마
 class RecordCommonCreate(ORMBase):
     model_config = ConfigDict(
