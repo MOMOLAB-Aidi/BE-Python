@@ -12,7 +12,6 @@ from datetime import date as _date, datetime, date
 from app.core.db import get_db
 
 from app.db_models.record import Record
-from app.db_models.record_exchange import RecordExchange
 from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
@@ -22,7 +21,7 @@ from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, Reco
 from app.services import recordService
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, \
     upload_to_gcs, delete_from_gcs, download_from_gcs
-from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
+from app.services.recordService import rec_to_dict, apply_record_patch, create_exchange, \
     create_record_common, patch_exchange, delete_record, get_latest_records
 
 router = APIRouter()
@@ -32,6 +31,35 @@ logger = logging.getLogger(__name__)
 
 class RecordCreateResponse(BaseModel):
     id: int
+
+
+@router.get("/api/v1/records/weekly-average",
+            tags=["복막투석기록"],
+            summary="주간 기록 데이터 평균 조회",
+            description="특정 날짜가 포함된 주의 (월요일 ~ 일요일) 환자 기록 데이터의 평균을 계산하여 반환합니다.",
+            response_model=WeeklyAverageResponse,
+            )
+def get_weekly_average(
+        current_user: User = Depends(AuthTokenDep),
+        target_date: date = Query(date.today(), description="지정하지 않으면 오늘 날짜 기준 주간을 사용합니다."),
+        db: Session = Depends(get_db)
+):
+    try:
+        avg_data, start_date, end_date = recordService.get_weekly_average_records(db, current_user.id, target_date)
+
+        # Pydantic 모델로 변환하여 응답
+        return WeeklyAverageResponse(
+            start_date=start_date,
+            end_date=end_date,
+            data=WeeklyAverageData(**avg_data)
+        )
+
+    except SQLAlchemyError as e:
+        logger.exception("주간 평균 계산 중 DB 오류 발생")
+        raise HTTPException(status_code=500, detail="주간 평균 계산 중 서버 오류가 발생했습니다.") from e
+    except Exception as e:
+        logger.exception("주간 평균 계산 중 예상치 못한 오류 발생")
+        raise HTTPException(status_code=500, detail="주간 평균 계산 중 서버 오류가 발생했습니다.") from e
 
 
 # 복막투석기록 공통 정보 생성 api
@@ -55,135 +83,6 @@ def create_record_common_route(
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="이미 해당 날짜에 기록이 존재합니다.")
-
-
-# 복막투석기록 공통 정보 수정 api
-@router.patch(
-    "/api/v1/records/{rec_id}",
-    tags=["복막투석기록-공통"],
-    summary="공통 정보 수정",
-    description="공통 정보만 부분 수정합니다.",
-    status_code=204,
-    responses={204: {"description": "성공입니다"}},
-)
-def patch_record_common(
-        rec_id: int,
-        payload: RecordCommonPatch,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
-):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    if rec.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
-
-    patch = payload.model_dump(exclude_unset=True)
-
-    # record_date가 변경되는 경우, 동일 날짜의 다른 레코드가 있는지 검사
-    if "record_date" in patch and patch["record_date"] is not None:
-        new_date = patch["record_date"]
-        if isinstance(new_date, str):
-            new_date = _date.fromisoformat(new_date)
-        if new_date != rec.record_date:
-            exists = (
-                db.query(Record.id)
-                .filter(
-                    Record.record_date == new_date,
-                    Record.id != rec.id,
-                    Record.user_id == current_user.id)
-                .first()
-            )
-            if exists:
-                raise HTTPException(status_code=409, detail=f"{new_date.isoformat()} 기록이 이미 존재합니다.")
-
-    apply_record_patch(rec, patch, user_id=current_user.id)
-
-    db.add(rec)
-    db.commit()
-    db.refresh(rec)
-    return Response(status_code=204)
-
-MAX_EXCHANGES = 5
-
-# 복막투석기록 회차 정보 생성 api
-@router.post(
-    "/api/v1/records/{rec_id}/exchanges",
-    tags=["복막투석기록-회차"],
-    summary="회차 정보 생성",
-    description="특정 기록에 회차 정보를 생성합니다. 최대 5개까지 작성할 수 있습니다.",
-    status_code=204,
-    responses={204: {"description": "성공입니다"}},
-)
-def create_record_exchange(
-        rec_id: int,
-        payload: RecordExchangeCreate,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
-):
-    rec = (
-        db.query(Record)
-        .options(joinedload(Record.exchanges))
-        .filter(Record.id == rec_id)
-        .first()
-    )
-
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    if rec.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="생성 권한이 없습니다.")
-
-    current_exchange_count = len(rec.exchanges)
-
-    if current_exchange_count >= MAX_EXCHANGES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"기록 하나당 최대 {MAX_EXCHANGES}개의 회차만 생성할 수 있습니다."
-        )
-
-    p = payload.model_dump()
-    create_exchange(rec, p, user_id=current_user.id)
-
-    db.add(rec)
-    db.commit()
-    db.refresh(rec)
-    return Response(status_code=204)
-
-
-# 복막투석기록 회차 정보 수정 api
-@router.patch(
-    "/api/v1/records/{rec_id}/exchanges/{exchange_no}",
-    tags=["복막투석기록-회차"],
-    summary="회차 정보 수정",
-    description="특정 기록의 특정 회차 정보를 수정합니다.",
-    status_code=204,
-    responses={204: {"description": "성공입니다"}},
-)
-def patch_record_exchange(
-        rec_id: int,
-        exchange_no: int,
-        payload: RecordExchangePatch,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
-):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    if rec.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
-
-    p = payload.model_dump(exclude_unset=True)
-    p["exchange_no"] = p.get("exchange_no", exchange_no)
-
-    patch_exchange(rec, p, user_id=current_user.id)
-
-    db.add(rec)
-    db.commit()
-    db.refresh(rec)
-    return Response(status_code=204)
 
 
 # 모든 복막투석기록 조회 api (공통 + 회차)
@@ -251,115 +150,6 @@ def get_latest_records_routes(
 
     # 조회된 Record 객체 리스트를 딕셔너리 리스트로 변환하여 반환
     return [rec_to_dict(rec) for rec in records]
-
-
-# 특정 복막투석기록 조회 api (공통 + 회차)
-@router.get(
-    "/api/v1/records/{rec_id}",
-    tags=["복막투석기록"],
-    summary="환자의 특정 기록 조회",
-    description="특정 투석기록(공통 + 회차 전체)을 조회합니다."
-)
-def get_record(
-        rec_id: int,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
-):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    if rec.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
-    rec = (
-        db.query(Record)
-        .options(joinedload(Record.exchanges))
-        .filter(Record.id == rec_id)
-        .one()
-    )
-    return rec_to_dict(rec)
-
-
-@router.get("/api/v1/records/weekly-average",
-            tags=["복막투석기록"],
-            summary="주간 기록 데이터 평균 조회",
-            description="특정 날짜가 포함된 주의 (월요일 ~ 일요일) 환자 기록 데이터의 평균을 계산하여 반환합니다.",
-            response_model=WeeklyAverageResponse,
-            )
-def get_weekly_average(
-        current_user: User = Depends(AuthTokenDep),
-        target_date: date = Query(date.today(), description="지정하지 않으면 오늘 날짜 기준 주간을 사용합니다."),
-        db: Session = Depends(get_db)
-):
-    try:
-        avg_data, start_date, end_date = recordService.get_weekly_average_records(db, current_user.id, target_date)
-
-        # Pydantic 모델로 변환하여 응답
-        return WeeklyAverageResponse(
-            start_date=start_date,
-            end_date=end_date,
-            data=WeeklyAverageData(**avg_data)
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"주간 평균 계산 중 오류 발생: {e}")
-
-
-# 특정 복막투석기록 회차 정보 조회
-@router.get(
-    "/api/v1/records/{rec_id}/exchanges/{exchange_id}",
-    tags=["복막투석기록-회차"],
-    summary="회차 단건 조회",
-    description="특정 기록의 회차 중 교체 ID(RecordExchange.id)로 단건 조회합니다."
-)
-def get_record_exchange_by_id(
-        rec_id: int,
-        exchange_id: int,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
-):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    if rec.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
-
-    row = (
-        db.query(RecordExchange)
-        .filter(
-            RecordExchange.record_id == rec_id,
-            RecordExchange.id == exchange_id
-        )
-        .first()
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="해당 회차를 찾을 수 없습니다.")
-    return ex_to_dict(row)
-
-
-# 기록 삭제 api
-@router.delete(
-    "/api/v1/records/{rec_id}",
-    tags=["복막투석기록"],
-    summary="기록 삭제",
-    description="특정 아이디의 기록을 삭제합니다. 연관된 회차 정보를 모두 삭제합니다.",
-    status_code=204,
-    responses={204: {"description": "성공입니다"}},
-)
-def delete_record_route(
-        rec_id: int,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
-):
-    try:
-        delete_record(db, rec_id, current_user.id)
-        return Response(status_code=204)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="기록 삭제 중 서버 오류가 발생했습니다.") from e
 
 
 @router.post(
@@ -465,3 +255,184 @@ def get_ocr_image(
     except Exception as e:
         logger.exception("이미지 다운로드 실패")
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.") from e
+
+
+# 복막투석기록 공통 정보 수정 api
+@router.patch(
+    "/api/v1/records/{rec_id}",
+    tags=["복막투석기록-공통"],
+    summary="공통 정보 수정",
+    description="공통 정보만 부분 수정합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
+)
+def patch_record_common(
+        rec_id: int,
+        payload: RecordCommonPatch,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+):
+    rec = db.get(Record, rec_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
+
+    patch = payload.model_dump(exclude_unset=True)
+
+    # record_date가 변경되는 경우, 동일 날짜의 다른 레코드가 있는지 검사
+    if "record_date" in patch and patch["record_date"] is not None:
+        new_date = patch["record_date"]
+        if isinstance(new_date, str):
+            new_date = _date.fromisoformat(new_date)
+        if new_date != rec.record_date:
+            exists = (
+                db.query(Record.id)
+                .filter(
+                    Record.record_date == new_date,
+                    Record.id != rec.id,
+                    Record.user_id == current_user.id)
+                .first()
+            )
+            if exists:
+                raise HTTPException(status_code=409, detail=f"{new_date.isoformat()} 기록이 이미 존재합니다.")
+
+    apply_record_patch(rec, patch, user_id=current_user.id)
+
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return Response(status_code=204)
+
+
+MAX_EXCHANGES = 5
+
+# 복막투석기록 회차 정보 생성 api
+@router.post(
+    "/api/v1/records/{rec_id}/exchanges",
+    tags=["복막투석기록-회차"],
+    summary="회차 정보 생성",
+    description="특정 기록에 회차 정보를 생성합니다. 최대 5개까지 작성할 수 있습니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
+)
+def create_record_exchange(
+        rec_id: int,
+        payload: RecordExchangeCreate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+):
+    rec = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))
+        .filter(Record.id == rec_id)
+        .first()
+    )
+
+    if not rec:
+        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="생성 권한이 없습니다.")
+
+    current_exchange_count = len(rec.exchanges)
+
+    if current_exchange_count >= MAX_EXCHANGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"기록 하나당 최대 {MAX_EXCHANGES}개의 회차만 생성할 수 있습니다."
+        )
+
+    p = payload.model_dump()
+    create_exchange(rec, p, user_id=current_user.id)
+
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return Response(status_code=204)
+
+
+# 복막투석기록 회차 정보 수정 api
+@router.patch(
+    "/api/v1/records/{rec_id}/exchanges/{exchange_no}",
+    tags=["복막투석기록-회차"],
+    summary="회차 정보 수정",
+    description="특정 기록의 특정 회차 정보를 수정합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
+)
+def patch_record_exchange(
+        rec_id: int,
+        exchange_no: int,
+        payload: RecordExchangePatch,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+):
+    rec = db.get(Record, rec_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
+
+    p = payload.model_dump(exclude_unset=True)
+    p["exchange_no"] = p.get("exchange_no", exchange_no)
+
+    patch_exchange(rec, p, user_id=current_user.id)
+
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return Response(status_code=204)
+
+
+# 특정 복막투석기록 조회 api (공통 + 회차)
+@router.get(
+    "/api/v1/records/{rec_id}",
+    tags=["복막투석기록"],
+    summary="환자의 특정 기록 조회",
+    description="특정 투석기록(공통 + 회차 전체)을 조회합니다."
+)
+def get_record(
+        rec_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+):
+    rec = db.get(Record, rec_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    if rec.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="조회 권한이 없습니다.")
+    rec = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))
+        .filter(Record.id == rec_id)
+        .one()
+    )
+    return rec_to_dict(rec)
+
+
+# 기록 삭제 api
+@router.delete(
+    "/api/v1/records/{rec_id}",
+    tags=["복막투석기록"],
+    summary="기록 삭제",
+    description="특정 아이디의 기록을 삭제합니다. 연관된 회차 정보를 모두 삭제합니다.",
+    status_code=204,
+    responses={204: {"description": "성공입니다"}},
+)
+def delete_record_route(
+        rec_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(AuthTokenDep)
+):
+    try:
+        delete_record(db, rec_id, current_user.id)
+        return Response(status_code=204)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="기록 삭제 중 서버 오류가 발생했습니다.") from e

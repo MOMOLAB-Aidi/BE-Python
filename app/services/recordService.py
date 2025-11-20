@@ -300,7 +300,6 @@ def delete_record(db: Session, rec_id: int, user_id: int) -> None:
     # record 삭제
     db.delete(record)
     db.commit()
-    return
 
 
 # 기준 날짜를 포함하는 주의 (월요일 ~ 일요일) 환자 기록 데이터의 평균을 계산
