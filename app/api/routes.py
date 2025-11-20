@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
-from datetime import date as _date, datetime
+from datetime import date as _date, datetime, date
 
 from app.core.db import get_db
 
@@ -17,7 +17,9 @@ from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
 
-from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
+from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch, \
+    WeeklyAverageResponse, WeeklyAverageData
+from app.services import recordService
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, \
     upload_to_gcs, delete_from_gcs, download_from_gcs
 from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
@@ -276,6 +278,31 @@ def get_record(
         .one()
     )
     return rec_to_dict(rec)
+
+
+@router.get("/api/v1/records/weekly-average",
+            tags=["복막투석기록"],
+            summary="주간 기록 데이터 평균 조회",
+            description="특정 날짜가 포함된 주의 (월요일 ~ 일요일) 환자 기록 데이터의 평균을 계산하여 반환합니다.",
+            response_model=WeeklyAverageResponse,
+            )
+def get_weekly_average(
+        current_user: User = Depends(AuthTokenDep),
+        target_date: date = Query(date.today(), description="지정하지 않으면 오늘 날짜 기준 주간을 사용합니다."),
+        db: Session = Depends(get_db)
+):
+    try:
+        avg_data, start_date, end_date = recordService.get_weekly_average_records(db, current_user.id, target_date)
+
+        # Pydantic 모델로 변환하여 응답
+        return WeeklyAverageResponse(
+            start_date=start_date,
+            end_date=end_date,
+            data=WeeklyAverageData(**avg_data)
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"주간 평균 계산 중 오류 발생: {e}")
 
 
 # 특정 복막투석기록 회차 정보 조회

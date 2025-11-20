@@ -105,3 +105,14 @@ class RecordCommonPatch(ORMBase):
     turbidity: Optional[Turbidity] = None
     notes: Optional[str] = Field(None, max_length=2000)
     total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
+
+
+class WeeklyAverageData(ORMBase):
+    weight_avg: Optional[float] = Field(None, description="주간 평균 체중")
+    total_uf_avg: Optional[float] = Field(None, description="주간 평균 제수량 합계")
+
+
+class WeeklyAverageResponse(ORMBase):
+    start_date: date = Field(..., description="주간 시작일 (월요일)")
+    end_date: date = Field(..., description="주간 종료일 (일요일)")
+    data: WeeklyAverageData = Field(..., description="주간 기록 데이터 평균 값")
