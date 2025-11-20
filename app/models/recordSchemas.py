@@ -12,11 +12,14 @@ today_dw = weekday_kr[today.weekday()]
 # 입력되는 시간 형식: "HH:MM" 또는 "HH:MM:SS"
 TimeStr = constr(pattern=r"^\d{2}:\d{2}(:\d{2})?$")
 
+
 class ORMBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+
 DayWeekKR = Literal["월", "화", "수", "목", "금", "토", "일"]
 Turbidity = Literal["없음", "있음"]
+
 
 # 회차 정보 생성 스키마
 class RecordExchangeCreate(ORMBase):
@@ -38,6 +41,7 @@ class RecordExchangeCreate(ORMBase):
     fill_concentration: float = Field(..., ge=0, le=100, description="예: 1.5, 2.5, 4.25")
     uf: int = Field(..., ge=-500, le=500, description="제수량(-500~500)")
 
+
 # 회차 정보 수정 스키마
 class RecordExchangePatch(ORMBase):
     model_config = ConfigDict(
@@ -53,6 +57,7 @@ class RecordExchangePatch(ORMBase):
     fill_volume: Optional[int] = Field(None, ge=0, le=6000)
     fill_concentration: Optional[float] = Field(None, ge=0, le=100)
     uf: Optional[int] = Field(None, ge=-500, le=500)
+
 
 # 공통 정보 생성 스키마
 class RecordCommonCreate(ORMBase):
@@ -83,6 +88,7 @@ class RecordCommonCreate(ORMBase):
     notes: Optional[str] = Field(None, max_length=2000)
     total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
 
+
 # 공통 정보 수정 스키마
 class RecordCommonPatch(ORMBase):
     model_config = ConfigDict(
@@ -105,3 +111,34 @@ class RecordCommonPatch(ORMBase):
     turbidity: Optional[Turbidity] = None
     notes: Optional[str] = Field(None, max_length=2000)
     total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
+
+
+
+class WeeklyAverageData(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "weight_avg": 62.5,
+                "total_uf_avg": 600
+            }
+        }
+    )
+    weight_avg: Optional[float] = Field(None, description="주간 평균 체중")
+    total_uf_avg: Optional[float] = Field(None, description="주간 평균 제수량 합계")
+
+class WeeklyAverageResponse(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "start_date": "2025-11-17",
+                "end_date": "2025-11-23",
+                "data": {
+                    "weight_avg": 62.5,
+                    "total_uf_avg": 600
+                }
+            }
+        }
+    )
+    start_date: date = Field(..., description="주간 시작일 (월요일)")
+    end_date: date = Field(..., description="주간 종료일 (일요일)")
+    data: WeeklyAverageData = Field(..., description="주간 기록 데이터 평균 값")
