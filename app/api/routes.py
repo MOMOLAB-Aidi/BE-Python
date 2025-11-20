@@ -1,6 +1,6 @@
 import hashlib
 import logging
-from typing import List
+from typing import List, Optional
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status, Query
 from pydantic import BaseModel
@@ -41,11 +41,11 @@ class RecordCreateResponse(BaseModel):
             )
 def get_weekly_average(
         current_user: User = Depends(AuthTokenDep),
-        target_date: date = Query(date.today(), description="지정하지 않으면 오늘 날짜 기준 주간을 사용합니다."),
-        db: Session = Depends(get_db)
+        target_date: Optional[date] = Query(None, description="지정하지 않으면 오늘 날짜 기준 주간을 사용합니다."), db: Session = Depends(get_db)
 ):
     try:
-        avg_data, start_date, end_date = recordService.get_weekly_average_records(db, current_user.id, target_date)
+        effective_date = target_date or date.today()
+        avg_data, start_date, end_date = recordService.get_weekly_average_records(db, current_user.id, effective_date)
 
         # Pydantic 모델로 변환하여 응답
         return WeeklyAverageResponse(
@@ -220,6 +220,7 @@ def ocr_temp(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("OCR 처리 중 서버 내부 오류 발생")
         raise HTTPException(status_code=500, detail="서버 내부 오류가 발생했습니다.") from e
 
 

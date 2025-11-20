@@ -325,9 +325,9 @@ def get_weekly_average_records(
     ).first()
 
     # 초기 빈 딕셔너리 할당을 제거하고 if/else 블록에서 직접 할당을 보장
-    avg_data: Dict[str, Optional[float]] # 변수 선언은 flow control 외부에서, 할당은 내부에서
+    avg_data: Dict[str, Optional[float]]
 
-    if avg_results and any(v is not None for v in avg_results):
+    if avg_results is not None and any(v is not None for v in avg_results):
         # 결과에 값이 있을 경우
         avg_data = {
             'weight_avg': avg_results.weight_avg,

@@ -113,7 +113,8 @@ class RecordCommonPatch(ORMBase):
     total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
 
 
-class WeeklyAverageData(ORMBase):
+
+class WeeklyAverageData(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -125,13 +126,12 @@ class WeeklyAverageData(ORMBase):
     weight_avg: Optional[float] = Field(None, description="주간 평균 체중")
     total_uf_avg: Optional[float] = Field(None, description="주간 평균 제수량 합계")
 
-
-class WeeklyAverageResponse(ORMBase):
+class WeeklyAverageResponse(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "start_date": "2025-11-18",
-                "end_date": "2025-11-24",
+                "start_date": "2025-11-17",
+                "end_date": "2025-11-23",
                 "data": {
                     "weight_avg": 62.5,
                     "total_uf_avg": 600
