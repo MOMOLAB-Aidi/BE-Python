@@ -16,13 +16,13 @@ from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
 
-from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch, \
-    WeeklyAverageResponse, WeeklyAverageData
+from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, \
+    WeeklyAverageResponse, WeeklyAverageData, RecordExchangeCreateList, RecordExchangeUpdateList
 from app.services import recordService
 from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, \
     upload_to_gcs, delete_from_gcs, download_from_gcs
-from app.services.recordService import rec_to_dict, apply_record_patch, create_exchange, \
-    create_record_common, patch_exchange, delete_record, get_latest_records
+from app.services.recordService import rec_to_dict, apply_record_patch, \
+    create_record_common, delete_record, get_latest_records, create_exchanges_list, patch_exchanges_list
 
 router = APIRouter()
 
@@ -320,71 +320,34 @@ MAX_EXCHANGES = 5
 )
 def create_record_exchange(
         rec_id: int,
-        payload: RecordExchangeCreate,
+        payload: RecordExchangeCreateList,
         db: Session = Depends(get_db),
         current_user: User = Depends(AuthTokenDep)
 ):
-    rec = (
-        db.query(Record)
-        .options(joinedload(Record.exchanges))
-        .filter(Record.id == rec_id)
-        .first()
-    )
+    create_exchanges_list(db, rec_id, payload.exchanges, user_id=current_user.id)
 
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    if rec.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="생성 권한이 없습니다.")
-
-    current_exchange_count = len(rec.exchanges)
-
-    if current_exchange_count >= MAX_EXCHANGES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"기록 하나당 최대 {MAX_EXCHANGES}개의 회차만 생성할 수 있습니다."
-        )
-
-    p = payload.model_dump()
-    create_exchange(rec, p, user_id=current_user.id)
-
-    db.add(rec)
     db.commit()
-    db.refresh(rec)
     return Response(status_code=204)
 
 
 # 복막투석기록 회차 정보 수정 api
 @router.patch(
-    "/api/v1/records/{rec_id}/exchanges/{exchange_no}",
+    "/api/v1/records/{rec_id}/exchanges",
     tags=["복막투석기록-회차"],
     summary="회차 정보 수정",
-    description="특정 기록의 특정 회차 정보를 수정합니다.",
+    description="특정 기록의 회차 정보를 수정합니다.",
     status_code=204,
     responses={204: {"description": "성공입니다"}},
 )
 def patch_record_exchange(
         rec_id: int,
-        exchange_no: int,
-        payload: RecordExchangePatch,
+        payload: RecordExchangeUpdateList,
         db: Session = Depends(get_db),
         current_user: User = Depends(AuthTokenDep)
 ):
-    rec = db.get(Record, rec_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+    patch_exchanges_list(db, rec_id, payload.exchanges, user_id=current_user.id)
 
-    if rec.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="수정 권한이 없습니다.")
-
-    p = payload.model_dump(exclude_unset=True)
-    p["exchange_no"] = p.get("exchange_no", exchange_no)
-
-    patch_exchange(rec, p, user_id=current_user.id)
-
-    db.add(rec)
     db.commit()
-    db.refresh(rec)
     return Response(status_code=204)
 
 
