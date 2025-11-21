@@ -89,7 +89,7 @@ class RecordExchangeCreate(ORMBase):
             }
         }
     )
-    exchange_no: int = Field(..., ge=1, le=5, description="구분(회차)")
+    exchange_no: Optional[int] = Field(None, ge=1, le=5, description="구분(회차)", json_schema_extra={"readOnly": True})
     exchange_time: TimeStr = Field(..., description="HH:MM 또는 HH:MM:SS")
     drain_volume: int = Field(..., ge=0, le=6000)
     fill_volume: int = Field(..., ge=0, le=6000)
@@ -112,6 +112,7 @@ class RecordExchangePatch(ORMBase):
             }
         }
     )
+    id: int = Field(..., description="수정할 회차의 ID")
     exchange_no: Optional[int] = Field(None, ge=1, le=5, description="구분(회차)")
     exchange_time: Optional[TimeStr] = Field(None, description="HH:MM 또는 HH:MM:SS")
     drain_volume: Optional[int] = Field(None, ge=0, le=6000)

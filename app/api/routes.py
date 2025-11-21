@@ -324,7 +324,8 @@ def create_record_exchange(
         db: Session = Depends(get_db),
         current_user: User = Depends(AuthTokenDep)
 ):
-    create_exchanges_list(db, rec_id, payload.exchanges, user_id=current_user.id)
+    exchange_list = [ex.model_dump(exclude_unset=True) for ex in payload.exchanges]
+    create_exchanges_list(db, rec_id, exchange_list, user_id=current_user.id)
 
     db.commit()
     return Response(status_code=204)
@@ -345,7 +346,8 @@ def patch_record_exchange(
         db: Session = Depends(get_db),
         current_user: User = Depends(AuthTokenDep)
 ):
-    patch_exchanges_list(db, rec_id, payload.exchanges, user_id=current_user.id)
+    update_list = [ex.model_dump(exclude_unset=True) for ex in payload.exchanges]
+    patch_exchanges_list(db, rec_id, update_list, user_id=current_user.id)
 
     db.commit()
     return Response(status_code=204)
