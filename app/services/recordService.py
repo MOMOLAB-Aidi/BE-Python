@@ -236,38 +236,98 @@ def get_latest_records(db: Session, user_id: int) -> List[Record]:
     return records
 
 
-# 존재하는 회차만 수정
-def patch_exchange(rec: Record, p: Dict[str, Any], user_id: int) -> RecordExchange:
+# 회차 정보 리스트 생성
+def create_exchanges_list(
+        db: Session,
+        rec_id: int,
+        exchange_list: List[Dict[str, Any]],
+        user_id: int
+) -> Record:
+    rec = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))
+        .filter(Record.id == rec_id)
+        .first()
+    )
+
+    if not rec:
+        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    # 소유권 검증
+    if rec.user_id != user_id:
+        raise HTTPException(status_code=403, detail="기록에 회차를 생성할 권한이 없습니다.")
+
+    # 일괄 생성 로직
+    current_exchange_count = len(rec.exchanges or [])
+    new_exchange_count = len(exchange_list)
+    total_count = current_exchange_count + new_exchange_count
+
+    # 최대 개수 검증
+    vrng(total_count <= 5, "기록 하나당 최대 5개의 회차만 생성할 수 있습니다.")
+
+    for exchange_data in exchange_list:
+
+        # 다음 회차 번호를 계산하고 할당
+        ex_no = _next_exchange_no(rec)
+
+        # 회차 번호가 이미 존재하는지 다시 검사
+        if find_exchange(rec, ex_no) is not None:
+            raise HTTPException(status_code=409, detail="회차 번호 충돌 발생")
+
+        target = RecordExchange(exchange_no=ex_no, user_id=rec.user_id)
+
+        # 필드 적용 시 시간 파싱 및 범위 검증 수행
+        _apply_exchange_fields(target, exchange_data)
+
+        # 목록에 추가
+        rec.exchanges = (rec.exchanges or [])
+        rec.exchanges.append(target)
+
+    db.add(rec)
+    db.flush()
+    return rec
+
+
+# 회차 정보 리스트 수정
+def patch_exchanges_list(
+        db: Session,
+        rec_id: int,
+        exchange_update_list: List[Dict[str, Any]],
+        user_id: int
+) -> Record:
+    rec = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))
+        .filter(Record.id == rec_id)
+        .first()
+    )
+
+    if not rec:
+        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
 
     # 소유권 검증
     if rec.user_id != user_id:
         raise HTTPException(status_code=403, detail="기록을 수정할 권한이 없습니다.")
 
-    ex_no = _require_exchange_no(p)
-    target = find_exchange(rec, ex_no)
-    if target is None:
-        raise HTTPException(status_code=404, detail=f"{ex_no}회차가 존재하지 않습니다.")
-    _apply_exchange_fields(target, p)
-    return target
+    # 현재 기록의 회차들을 ID 기준으로 맵핑
+    exchanges_map = {e.id: e for e in (rec.exchanges or [])}
 
-# 회차 정보 생성
-def create_exchange(rec: Record, p: Dict[str, Any], user_id: int) -> RecordExchange:
+    for update_data in exchange_update_list:
+        exchange_id = update_data.get("id")
 
-    # 소유권 검증
-    if rec.user_id != user_id:
-        raise HTTPException(status_code=403, detail="기록을 수정할 권한이 없습니다.")
+        if exchange_id is None:
+            raise HTTPException(status_code=400, detail="회차 수정을 위해서는 'id'가 필수입니다.")
 
-    ex_no = _next_exchange_no(rec)
+        target = exchanges_map.get(exchange_id)
 
-    if find_exchange(rec, ex_no) is not None:
-        raise HTTPException(status_code=409, detail=f"{ex_no}회차가 이미 존재합니다.")
+        if target is None:
+            raise HTTPException(status_code=404, detail=f"회차 ID {exchange_id}를 찾을 수 없습니다.")
 
-    target = RecordExchange(exchange_no=ex_no, user_id=rec.user_id)
-    _apply_exchange_fields(target, p)
+        _apply_exchange_fields(target, update_data)
 
-    rec.exchanges = (rec.exchanges or [])
-    rec.exchanges.append(target)
-    return target
+    db.add(rec)
+    db.flush()
+    return rec
 
 
 # 기록 삭제

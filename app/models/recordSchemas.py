@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from pydantic import BaseModel, Field, ConfigDict, constr
 
 # 오늘 기본값 예시 구성
@@ -19,44 +19,6 @@ class ORMBase(BaseModel):
 
 DayWeekKR = Literal["월", "화", "수", "목", "금", "토", "일"]
 Turbidity = Literal["없음", "있음"]
-
-
-# 회차 정보 생성 스키마
-class RecordExchangeCreate(ORMBase):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "exchange_time": "09:00",
-                "drain_volume": 2100,
-                "fill_volume": 2000,
-                "fill_concentration": 2.5,
-                "uf": 100
-            }
-        }
-    )
-    exchange_no: Optional[int] = Field(None, ge=1, le=5, description="구분(회차)", json_schema_extra={"readOnly": True})
-    exchange_time: TimeStr = Field(..., description="HH:MM 또는 HH:MM:SS")
-    drain_volume: int = Field(..., ge=0, le=6000)
-    fill_volume: int = Field(..., ge=0, le=6000)
-    fill_concentration: float = Field(..., ge=0, le=100, description="예: 1.5, 2.5, 4.25")
-    uf: int = Field(..., ge=-500, le=500, description="제수량(-500~500)")
-
-
-# 회차 정보 수정 스키마
-class RecordExchangePatch(ORMBase):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "exchange_time": "10:30",
-                "drain_volume": 2200
-            }
-        }
-    )
-    exchange_time: Optional[str] = None
-    drain_volume: Optional[int] = Field(None, ge=0, le=6000)
-    fill_volume: Optional[int] = Field(None, ge=0, le=6000)
-    fill_concentration: Optional[float] = Field(None, ge=0, le=100)
-    uf: Optional[int] = Field(None, ge=-500, le=500)
 
 
 # 공통 정보 생성 스키마
@@ -112,6 +74,58 @@ class RecordCommonPatch(ORMBase):
     notes: Optional[str] = Field(None, max_length=2000)
     total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
 
+
+# 회차 정보 생성 스키마
+class RecordExchangeCreate(ORMBase):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "exchange_no": 1,
+                "exchange_time": "09:00",
+                "drain_volume": 2100,
+                "fill_volume": 2000,
+                "fill_concentration": 2.5,
+                "uf": 100
+            }
+        }
+    )
+    exchange_no: Optional[int] = Field(None, ge=1, le=5, description="구분(회차)", json_schema_extra={"readOnly": True})
+    exchange_time: TimeStr = Field(..., description="HH:MM 또는 HH:MM:SS")
+    drain_volume: int = Field(..., ge=0, le=6000)
+    fill_volume: int = Field(..., ge=0, le=6000)
+    fill_concentration: float = Field(..., ge=0, le=100, description="예: 1.5, 2.5, 4.25")
+    uf: int = Field(..., ge=-500, le=500, description="제수량(-500~500)")
+
+
+# 회차 정보 생성 요청 스키마 (리스트)
+class RecordExchangeCreateList(ORMBase):
+    exchanges: List[RecordExchangeCreate] = Field(..., description="생성할 회차 기록 리스트")
+
+
+# 회차 정보 수정 스키마
+class RecordExchangePatch(ORMBase):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": 123,
+                "exchange_time": "10:30",
+                "drain_volume": 2200
+            }
+        }
+    )
+    id: int = Field(..., description="수정할 회차의 ID")
+    exchange_no: Optional[int] = Field(None, ge=1, le=5, description="구분(회차)")
+    exchange_time: Optional[TimeStr] = Field(None, description="HH:MM 또는 HH:MM:SS")
+    drain_volume: Optional[int] = Field(None, ge=0, le=6000)
+    fill_volume: Optional[int] = Field(None, ge=0, le=6000)
+    fill_concentration: Optional[float] = Field(None, ge=0, le=100)
+    uf: Optional[int] = Field(None, ge=-500, le=500)
+
+
+# 회차 정보 수정 요청 스키마 (리스트)
+class RecordExchangeUpdateList(ORMBase):
+    # 단일 API 요청에 포함될 회차 리스트
+    exchanges: List[RecordExchangePatch] = Field(..., description="수정할 회차 기록 리스트")
 
 
 class WeeklyAverageData(BaseModel):
