@@ -336,7 +336,7 @@ def create_record_exchange(
     "/api/v1/records/{rec_id}/exchanges",
     tags=["복막투석기록-회차"],
     summary="회차 정보 수정",
-    description="특정 기록의 회차 정보를 수정합니다.",
+    description="특정 기록의 여러 회차 정보를 한 번에 수정합니다.",
     status_code=204,
     responses={204: {"description": "성공입니다"}},
 )

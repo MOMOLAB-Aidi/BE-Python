@@ -107,6 +107,7 @@ class RecordExchangePatch(ORMBase):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
+                "id": 123,
                 "exchange_time": "10:30",
                 "drain_volume": 2200
             }
