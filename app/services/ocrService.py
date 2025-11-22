@@ -118,16 +118,14 @@ def ocr_bytes_to_pdrecord_json(
         "2. Convert dates to the YYYY-MM-DD format. (Example: '2025년 9월 19일' → '2025-09-19')\n"
         "3. Return the day of the week as one of the following: '월', '화', '수', '목', '금', '토', '일'\n"
         "4. Convert AM/PM times to 24-hour HH:MM format. (Examples: '오전 6시' → 06:00, '오후 5시' → 17:00)\n"
-        "5. For all numerical values, remove units and return only integers or floats. (Examples: '2.5%' -> 2.5, '2000g' -> 2000, '56kg' -> 56, '150/90mmHg' -> {'systolic': 150, 'diastolic':90 }, '134mg/dL' -> 134\n"
+        "5. For all numerical values, remove units and return only integers or floats. (Examples: '2.5%' -> 2.5, '2000g' -> 2000, '56kg' -> 56, '150/90mmHg' -> {'systolic': 150, 'diastolic':90 }, '134mg/dL' -> 134)\n"
         "If the value is unclear or unreadable, return null. Remove spaces and commas.\n"
         "6. Map exchange numbers from left → right in order (1, 2, 3, …). If an exchange is empty, exclude it or return null.\n"
         "7. If a “Total Drain Volume” (제수량 합계) is present, return its numeric value. If not present, return null.\n"
         "8. Turbidity (“혼탁”) must be either '없음' or '있음'. If unclear, return null.\n"
         "9. For blood_pressure, separate into 'systolic' and 'diastolic' integers (units removed).\n"
-        "10. For the “복막액 혼탁” (turbidity) checkbox section: Return '없음' or '있음' depending on which circle/check mark is selected.\n"
-        "- If unclear, return null.\n"
-        "- If both options are marked, set conflict: true.\n"
-        "the JSON schema you must output:\n"
+        "10. For the “복막액 혼탁” (turbidity) checkbox section: Return '없음' or '있음' depending on which circle/check mark is selected. If unclear, return null.\n"
+        "Output JSON that matches exactly this schema:\n"
         "{\n"
         '  "record_date": "YYYY-MM-DD" or null,\n'
         '  "record_dw": "월" | "화" | "수" | "목" | "금" | "토" | "일" | null,\n'
@@ -141,7 +139,6 @@ def ocr_bytes_to_pdrecord_json(
         '  "fasting_glucose": int or null,\n'
         '  "urine_count": int or null,\n'
         '  "turbidity": "없음" | "있음" | null,\n'
-        '  "turbidity-conflict": true | false,\n'
         '  "total_uf": int or null,\n'
         '  "notes": string or null\n'
         "}\n"
