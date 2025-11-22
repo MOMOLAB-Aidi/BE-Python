@@ -16,7 +16,7 @@ class ConsultLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="consult_log_list")
 
-    session_id = Column(String, nullable=False) # 해당 메시지가 속한 상담 세션 ID
+    session_id = Column(String, nullable=False, index=True) # 해당 메시지가 속한 상담 세션 ID
 
     role = Column(
         Enum(ConsultRoleEnum, name="consult_role_enum"),

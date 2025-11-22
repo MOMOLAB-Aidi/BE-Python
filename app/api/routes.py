@@ -408,11 +408,12 @@ def delete_record_route(
         raise HTTPException(status_code=500, detail="기록 삭제 중 서버 오류가 발생했습니다.") from e
 
 
-@router.get("/api/v1/consult/start",
+@router.post("/api/v1/consult/start",
      tags=["에이전트 상담"],
      summary="새로운 복막투석 상담 시작",
      description="새로운 복막투석 상담 세션을 시작하고 고유한 세션 ID를 발급합니다.",
      response_model=SessionStartResponse,
+     status_code=status.HTTP_201_CREATED,
 )
 def start_chat_session(current_user: User = Depends(AuthTokenDep)):
     session_id = str(uuid.uuid4())
@@ -432,7 +433,13 @@ def start_chat_session(current_user: User = Depends(AuthTokenDep)):
 @router.post("/api/v1/consult/chat",
      tags=["에이전트 상담"],
      summary="에이전트 대화",
-     description="세션 ID를 사용하여 에이전트와 대화를 나눕니다."
+     description="세션 ID를 사용하여 에이전트와 대화를 나눕니다. Server-Sent Events(SSE) 형식으로 스트리밍 응답을 반환합니다.",
+     responses = {
+         200: {
+            "description": "에이전트 응답 스트림",
+            "content": {"text/event-stream": {"example": "응답 텍스트가 실시간으로 스트리밍됩니다."}}
+         }
+     }
 )
 def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(AuthTokenDep)):
 
@@ -459,9 +466,6 @@ def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), curre
 )
 def end_chat_session(request: SessionEndRequest, current_user: User = Depends(AuthTokenDep)):
     session_id = request.session_id
-
-    if not session_id:
-        raise HTTPException(status_code=400, detail="세션 ID가 요청 본문에 포함되어야 합니다.")
 
     if end_session(current_user.id, session_id):
         return SessionEndResponse(

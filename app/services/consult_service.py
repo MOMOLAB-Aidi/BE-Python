@@ -1,10 +1,11 @@
+import logging
 import math
 from typing import Dict, Any, Generator
 
 from google import genai
 from google.genai import types
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db_models import Record
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
@@ -13,6 +14,7 @@ from app.db_models.kdigo_chunk import KdigoChunk
 # 메모리 내 임시 세션 저장소: {session_id: chat_session_object}
 # 서버가 실행되는 동안 대화 이력을 임시로 저장
 active_sessions: Dict[str, Any] = {}
+logger = logging.getLogger(__name__)
 
 # 에이전트의 역할과 지침 정의
 SYSTEM_PROMPT = """
@@ -37,9 +39,9 @@ SYSTEM_PROMPT = """
 client = None
 try:
     client = genai.Client()
-    print("gemini 클라이언트가 성공적으로 초기화되었습니다.")
-except Exception:
-    print("gemini 클라이언트 초기화에 실패하였습니다.")
+    logger.info("gemini 클라이언트가 성공적으로 초기화되었습니다.")
+except Exception as e:
+    logger.error(f"gemini 클라이언트 초기화 실패: {e}", exc_info=True)
 
 
 # 새로운 채팅 세션을 생성하고 메모리에 저장
@@ -83,7 +85,13 @@ def get_session_status(user_id: int, session_id: str) -> bool:
 # 환자의 최신 복막투석 및 건강 기록을 조회하여 문자열로 포맷팅
 def get_patient_records_summary(db: Session, user_id: int) -> str:
     # 최신 기록 하나 조회
-    latest_record = db.query(Record).filter(Record.user_id == user_id).order_by(desc(Record.record_date)).first()
+    latest_record = (
+        db.query(Record)
+        .options(selectinload(Record.exchanges))
+        .filter(Record.user_id == user_id)
+        .order_by(desc(Record.record_date))
+        .first()
+    )
 
     if not latest_record:
         return "최신 복막투석 및 건강 기록을 찾을 수 없습니다."
@@ -132,18 +140,22 @@ QUERY_REFINEMENT_SYSTEM_PROMPT = """
 """
 
 
-# DB에서 최근 대화 기록을 조회하여 쿼리 정제용 문자열로 포맷팅
-def get_session_history(db: Session, session_id: str, limit: int = 3) -> str:
-    history_logs = db.query(ConsultLog) \
-        .filter(ConsultLog.session_id == session_id) \
-        .order_by(desc(ConsultLog.created_at)) \
-        .limit(limit) \
+def get_session_history(db: Session, session_id: str) -> str:
+    # 1. DB에서 최신 순으로 3개만 가져옴
+    history_logs = (
+        db.query(ConsultLog)
+        .filter(ConsultLog.session_id == session_id)
+        .order_by(desc(ConsultLog.created_at))
+        .limit(3)
         .all()
+    )
 
-    # 순서를 오래된 것부터 최신 순으로 뒤집어 프롬프트에 사용
+    # 2. 리스트를 뒤집어서 '오래된 → 최신'으로 정렬
+    history_logs = list(reversed(history_logs))
+
     formatted_history = "\n".join([
         f"{(log.role.value if hasattr(log.role, 'value') else log.role)}: {log.content}"
-        for log in reversed(history_logs)
+        for log in history_logs
     ])
 
     return formatted_history
@@ -153,7 +165,7 @@ def get_session_history(db: Session, session_id: str, limit: int = 3) -> str:
 def refine_query(db: Session, session_id: str, current_query: str) -> str:
     try:
         # 1. 최근 대화 기록과 현재 질문 가져오기
-        history = get_session_history(db, session_id, limit=3)
+        history = get_session_history(db, session_id)
 
         # 2. 쿼리 정제용 프롬프트 구성
         refinement_prompt = (
@@ -284,7 +296,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             content=message
         )
         db.add(user_log)
-        db.commit()
+        db.flush()  # ID 생성만 하고 커밋 x
 
         # 4. 모델에게 메시지 전송 및 스트림 응답 받기 (stream --> realtime)
         stream = chat.send_message_stream(full_message)
@@ -305,7 +317,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             content=full_response_text  # 취합된 최종 텍스트 저장
         )
         db.add(agent_log)
-        db.commit()
+        db.commit() # 두 로그를 함께 커밋
 
     except Exception as e:
         db.rollback()
@@ -322,7 +334,7 @@ def end_session(user_id: int, session_id: str) -> bool:
 
     # 사용자 ID 인증 확인
     if session_data.get('user_id') != user_id:
-        print(f"[{session_id}] 세션 종료 권한 없음: 요청={user_id}, 소유자={session_data.get('user_id')}")
+        logger.warning(f"[{session_id}] 세션 종료 권한 없음: 요청={user_id}, 소유자={session_data.get('user_id')}")
         return False
 
     # DB에 저장된 대화 기록은 유지하고, 메모리 내의 세션만 삭제

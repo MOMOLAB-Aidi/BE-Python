@@ -1,13 +1,13 @@
-from pydantic import BaseModel, ConfigDict
+from uuid import UUID
 
+from pydantic import BaseModel
 
-class ORMBase(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+from app.models.record_schemas import ORMBase
 
 
 # 환영 메시지
 class SessionStartResponse(ORMBase):
-    session_id: str
+    session_id: UUID
     message: str
 
 
@@ -21,7 +21,7 @@ class ChatResponse(ORMBase):
     session_id: str
     response: str
 
-class SessionEndRequest(BaseModel):
+class SessionEndRequest(ORMBase):
     session_id: str
 
 class SessionEndResponse(ORMBase):
