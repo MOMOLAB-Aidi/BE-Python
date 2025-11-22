@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import uuid
 from typing import List, Optional
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status, Query
@@ -9,20 +10,23 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date, datetime, date
 
+from starlette.responses import JSONResponse
+
 from app.core.db import get_db
 
 from app.db_models.record import Record
 from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
-
-from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, \
-    WeeklyAverageResponse, WeeklyAverageData, RecordExchangeCreateList, RecordExchangeUpdateList
-from app.services import recordService
-from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, \
-    upload_to_gcs, delete_from_gcs, download_from_gcs
-from app.services.recordService import rec_to_dict, apply_record_patch, \
-    create_record_common, delete_record, get_latest_records, create_exchanges_list, patch_exchanges_list
+from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
+    SessionEndRequest
+from app.models.record_schemas import WeeklyAverageResponse, WeeklyAverageData, RecordCommonCreate, RecordCommonPatch, \
+    RecordExchangeCreateList, RecordExchangeUpdateList
+from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session
+from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
+    download_from_gcs
+from app.services.record_service import get_weekly_average_records, create_record_common, rec_to_dict, \
+    get_latest_records, apply_record_patch, create_exchanges_list, patch_exchanges_list, delete_record
 
 router = APIRouter()
 
@@ -45,7 +49,7 @@ def get_weekly_average(
 ):
     try:
         effective_date = target_date or date.today()
-        avg_data, start_date, end_date = recordService.get_weekly_average_records(db, current_user.id, effective_date)
+        avg_data, start_date, end_date = get_weekly_average_records(db, current_user.id, effective_date)
 
         # Pydantic 모델로 변환하여 응답
         return WeeklyAverageResponse(
@@ -401,4 +405,71 @@ def delete_record_route(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail="기록 삭제 중 서버 오류가 발생했습니다.") from e
+        logger.exception("기록 삭제 중 서버 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="기록 삭제 중 서버 오류가 발생했습니다.",
+        ) from e
+
+
+@router.post("/api/v1/consult/start",
+     tags=["에이전트 상담"],
+     summary="새로운 복막투석 상담 시작",
+     description="새로운 복막투석 상담 세션을 시작하고 고유한 세션 ID를 발급합니다.",
+     response_model=SessionStartResponse,
+     status_code=status.HTTP_201_CREATED,
+)
+def start_chat_session(current_user: User = Depends(AuthTokenDep)):
+    session_id = str(uuid.uuid4())
+
+    # 세션 생성 로직 호출
+    if start_new_session(current_user.id, session_id):
+        return SessionStartResponse(
+            session_id=session_id,
+            message="안녕하세요! 복막투석 AI 상담사입니다. 투석 관리, 일반 지침, 건강 상태 등에 대해 무엇이든 물어보세요."
+        )
+    else:
+        # gemini 클라이언트 초기화 실패 시 500 에러 발생
+        raise HTTPException(status_code=500, detail="상담 에이전트 서비스 초기화에 실패했습니다. 서버 로그를 확인해주세요.")
+
+
+@router.post("/api/v1/consult/chat",
+     tags=["에이전트 상담"],
+     summary="에이전트 대화",
+     description="세션 ID를 사용하여 에이전트와 대화를 나눕니다."
+)
+def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(AuthTokenDep)):
+
+    # 세션 활성화 상태 확인
+    if not get_session_status(current_user.id, request.session_id):
+        raise HTTPException(
+            status_code=404,
+            detail="활성화된 세션을 찾을 수 없습니다. `/start`를 통해 세션을 시작해주세요."
+        )
+
+    # 스트림을 돌면서 전체 텍스트를 하나로 합치기
+    full_text = ""
+    for chunk in get_agent_response_stream(
+        db, current_user.id, request.session_id, request.message
+    ):
+        full_text += chunk
+
+    return JSONResponse(content={"answer": full_text})
+
+@router.post("/api/v1/consult/end",
+     tags=["에이전트 상담"],
+     summary="상담 종료",
+     description="활성화된 세션을 종료하고 메모리에서 제거합니다.",
+     response_model=SessionEndResponse,
+)
+def end_chat_session(request: SessionEndRequest, current_user: User = Depends(AuthTokenDep)):
+    session_id = request.session_id
+
+    if end_session(current_user.id, session_id):
+        return SessionEndResponse(
+            session_id=session_id,
+            status="세션이 성공적으로 종료되었습니다. 이용해 주셔서 감사합니다."
+        )
+    else:
+        # 종료할 세션이 메모리에 없거나 user_id가 소유자와 불일치할 경우 404 에러
+        raise HTTPException(status_code=404, detail="종료할 활성화된 세션을 찾을 수 없습니다.")
