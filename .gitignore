@@ -18,3 +18,4 @@ __pycache__/
 *.mp3
 *.jpg
 *.png
+app/data/
