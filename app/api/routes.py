@@ -405,7 +405,7 @@ def delete_record_route(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("기록 삭제 중 서버 오류 발생", exc_info=True)
+        logger.exception("기록 삭제 중 서버 오류 발생")
         raise HTTPException(
             status_code=500,
             detail="기록 삭제 중 서버 오류가 발생했습니다.",
