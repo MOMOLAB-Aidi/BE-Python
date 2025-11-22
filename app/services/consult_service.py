@@ -88,6 +88,13 @@ def get_patient_records_summary(db: Session, user_id: int) -> str:
     if not latest_record:
         return "최신 복막투석 및 건강 기록을 찾을 수 없습니다."
 
+    # Enum일 수도, 그냥 문자열일 수도 있으니 안전하게 처리
+    def safe_enum(v):
+        return v.value if hasattr(v, "value") else v
+
+    record_dw = safe_enum(latest_record.record_dw)
+    turbidity = safe_enum(latest_record.turbidity)
+
     # 데이터 포맷팅
     exchange_details = "\n".join([
         f"- 회차 {ex.exchange_no}: 시각={ex.exchange_time.strftime('%H:%M')}, 주입액={ex.fill_concentration}%, 제수량={ex.uf}g"
@@ -96,12 +103,12 @@ def get_patient_records_summary(db: Session, user_id: int) -> str:
 
     summary = (
         f"--- 환자 최신 복막투석 기록 ---\n"
-        f"기록 날짜: {latest_record.record_date.strftime('%Y-%m-%d')} ({latest_record.record_dw.value})\n"
+        f"기록 날짜: {latest_record.record_date.strftime('%Y-%m-%d')} ({record_dw})\n"
         f"체중: {latest_record.weight:.1f} kg\n"
         f"혈압: {latest_record.systolic}/{latest_record.diastolic} mmHg\n"
         f"공복 혈당: {latest_record.fasting_glucose} mg/dL\n"
         f"소변 횟수: {latest_record.urine_count} 회\n"
-        f"복막액 혼탁: {latest_record.turbidity.value}\n"
+        f"복막액 혼탁: {turbidity}\n"
         f"비고: {latest_record.notes or '없음'}\n"
         f"제수량 합계: {latest_record.total_uf} g\n"
         f"\n--- 회차별 투석 상세 기록 ({latest_record.record_date.strftime('%Y-%m-%d')}) ---\n"
@@ -135,7 +142,8 @@ def get_session_history(db: Session, session_id: str, limit: int = 3) -> str:
 
     # 순서를 오래된 것부터 최신 순으로 뒤집어 프롬프트에 사용
     formatted_history = "\n".join([
-        f"{log.role.value}: {log.content}" for log in reversed(history_logs)
+        f"{(log.role.value if hasattr(log.role, 'value') else log.role)}: {log.content}"
+        for log in reversed(history_logs)
     ])
 
     return formatted_history
@@ -194,11 +202,11 @@ def kdigo_vector_search(refined_query: str, db: Session) -> str:
 
     try:
         # 1. 정제된 쿼리를 벡터로 임베딩 (gemini 임베딩 모델 사용)
-        embedding_result = client.embeddings.embed_content(
-            model="embedding-001",
-            content=refined_query
+        resp = client.models.embed_content(
+            model="gemini-embedding-001",  # kdigo_preprocess와 동일
+            contents=[refined_query],  # batched input
         )
-        query_vector = embedding_result.embedding  # 쿼리 벡터 (리스트 형태)
+        query_vector = resp.embeddings[0].values  # 쿼리 벡터 (리스트 형태)
 
         # 2. DB에서 KDIGO 청크 + 임베딩 전부 가져오기
         chunks = db.query(KdigoChunk).all()
@@ -241,21 +249,22 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         yield "서비스가 초기화되지 않았습니다. API 키 설정을 확인해주세요."
         return
 
-    chat_session = active_sessions.get(session_id)
-    if chat_session is None:
+    session_data = active_sessions.get(session_id)
+    if session_data is None:
         yield "세션이 활성화되지 않았습니다. 세션 ID를 확인하거나 세션을 새로 시작해주세요."
+        return
+
+    # 실제 chat 객체 꺼내기
+    chat = session_data.get("chat")
+    if chat is None:
+        yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
         return
 
     # DB 트랜잭션 시작 (로그 저장을 위해 사용)
     try:
         # 1. 쿼리 정제 및 KDIGO 검색 (RAG)
-        # 1-1. 대화 맥락을 기반으로 쿼리 정제
         refined_query = refine_query(db, session_id, message)
-
-        # 1-2. 정제된 쿼리로 KDIGO 벡터 DB 검색 수행
         kdigo_context = kdigo_vector_search(refined_query, db)
-
-        # 1-3. 환자 기록 조회
         patient_records_text = get_patient_records_summary(db, user_id)
 
         # 2. AI 모델에 전달할 최종 RAG 프롬프트 구성
@@ -278,7 +287,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         db.commit()
 
         # 4. 모델에게 메시지 전송 및 스트림 응답 받기 (stream --> realtime)
-        stream = chat_session.send_message_stream(full_message)
+        stream = chat.send_message_stream(full_message)
 
         full_response_text = ""
 

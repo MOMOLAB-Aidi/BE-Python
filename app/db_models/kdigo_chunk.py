@@ -9,4 +9,4 @@ class KdigoChunk(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     content = Column(Text, nullable=False) # KDIGO 텍스트 청크
-    embedding = Column(JSONB, nullable=False) # [float, float, ...] 리스트 그대로 저장
+    embedding = Column(JSONB, nullable=False) # 임베딩 벡터: PostgreSQL의 jsonb 컬럼에 매핑

@@ -1,9 +1,12 @@
 from sqlalchemy import Column, Integer, ForeignKey, String, Enum, Text
 from sqlalchemy.orm import relationship
+from enum import Enum as PyEnum
 
 from app.core.db import Base
 
-ConsultRoleEnum = Enum("USER", "AGENT", name="consult_role_enum")
+class ConsultRoleEnum(str, PyEnum):
+    USER = "USER"
+    AGENT = "AGENT"
 
 class ConsultLog(Base):
     __tablename__ = "consult_log"
@@ -14,5 +17,10 @@ class ConsultLog(Base):
     user = relationship("User", back_populates="consult_log_list")
 
     session_id = Column(String, nullable=False) # 해당 메시지가 속한 상담 세션 ID
-    role = Column(ConsultRoleEnum, nullable=False) # 메시지의 주체
+
+    role = Column(
+        Enum(ConsultRoleEnum, name="consult_role_enum"),
+        nullable=False,
+    )
+
     content = Column(Text, nullable=False) # 대화 내용
