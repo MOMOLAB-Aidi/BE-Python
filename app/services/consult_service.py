@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db_models import Record
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
-from app.db_models.kdigo_chunk import kdigo_chunk
+from app.db_models.kdigo_chunk import KdigoChunk
 
 # 메모리 내 임시 세션 저장소: {session_id: chat_session_object}
 # 서버가 실행되는 동안 대화 이력을 임시로 저장
@@ -201,8 +201,7 @@ def kdigo_vector_search(refined_query: str, db: Session) -> str:
         query_vector = embedding_result.embedding  # 쿼리 벡터 (리스트 형태)
 
         # 2. DB에서 KDIGO 청크 + 임베딩 전부 가져오기
-        #    (kdigo_chunk.embedding 은 JSONB/ARRAY 로 저장된 list[float] 이라고 가정)
-        chunks = db.query(kdigo_chunk).all()
+        chunks = db.query(KdigoChunk).all()
 
         scored = []
         for c in chunks:
