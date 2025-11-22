@@ -17,10 +17,10 @@ try:
         client = genai.Client()
     else:
         client = None
-        logger.info("[KDIGO Preprocess] 경고: Gemini API 키가 설정되지 않았습니다.")
+        logger.warning("[KDIGO Preprocess] 경고: Gemini API 키가 설정되지 않았습니다.")
 except Exception as e:
     client = None
-    logger.info(f"[KDIGO Preprocess] Gemini 클라이언트 초기화 실패: {e}")
+    logger.error(f"[KDIGO Preprocess] Gemini 클라이언트 초기화 실패: {e}")
 
 
 # KDIGO 원문 텍스트를 LangChain으로 chunking
@@ -62,7 +62,7 @@ def embed_texts_with_gemini(texts: Iterable[str]) -> list[list[float]]:
             contents=text_list,
         )
     except Exception as e:
-        logger.info(f"[KDIGO Preprocess] 임베딩 API 호출 실패: {e}")
+        logger.error(f"[KDIGO Preprocess] 임베딩 API 호출 실패: {e}", exc_info=True)
         raise
 
     # response.embeddings -> 각 embedding 객체, 실제 벡터는 .values 에 들어 있음
@@ -89,13 +89,17 @@ def build_kdigo_chunks(
     try:
         # 0. 기존 데이터 삭제 옵션
         if clear_existing:
+            # 안전을 위해 삭제 전 개수 확인
+            count = db.query(KdigoChunk).count()
+            if count > 0:
+                logger.warning(f"[KDIGO Preprocess] 경고: {count}개의 기존 청크를 삭제합니다.")
             db.query(KdigoChunk).delete()
             db.commit()
 
         # 1. chunking
         chunks = chunk_kdigo_text(kdigo_text, chunk_size, chunk_overlap)
         if not chunks:
-            logger.info("청크가 생성되지 않았습니다.")
+            logger.warning("청크가 생성되지 않았습니다.")
             return 0
 
         logger.info(f"생성된 청크 수: {len(chunks)}")
@@ -118,5 +122,5 @@ def build_kdigo_chunks(
         return len(chunks)
     except Exception as e:
         db.rollback()
-        logger.info(f"[KDIGO Preprocess] 에러 발생: {e}")
+        logger.error(f"[KDIGO Preprocess] 에러 발생: {e}")
         raise

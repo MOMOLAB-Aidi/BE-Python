@@ -404,8 +404,8 @@ def delete_record_route(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="기록 삭제 중 서버 오류가 발생했습니다.") from e
+    except Exception:
+        logger.exception("기록 삭제 중 서버 오류 발생", exc_info=True)
 
 
 @router.post("/api/v1/consult/start",
@@ -427,7 +427,6 @@ def start_chat_session(current_user: User = Depends(AuthTokenDep)):
     else:
         # gemini 클라이언트 초기화 실패 시 500 에러 발생
         raise HTTPException(status_code=500, detail="상담 에이전트 서비스 초기화에 실패했습니다. 서버 로그를 확인해주세요.")
-
 
 
 @router.post("/api/v1/consult/chat",

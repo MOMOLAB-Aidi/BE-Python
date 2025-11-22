@@ -69,7 +69,7 @@ def start_new_session(user_id: int, session_id: str) -> bool:
         }
         return True
     except Exception as e:
-        print(f"[{session_id}] 새로운 대화 시작 실패: {e}")
+        logger.error(f"[{session_id}] 새로운 대화 시작 실패: {e}", exc_info=True)
         return False
 
 
@@ -103,6 +103,12 @@ def get_patient_records_summary(db: Session, user_id: int) -> str:
     record_dw = safe_enum(latest_record.record_dw)
     turbidity = safe_enum(latest_record.turbidity)
 
+    # total_uf 표시용 문자열 처리
+    if latest_record.total_uf is None:
+        total_uf_str = "정보 없음"
+    else:
+        total_uf_str = f"{latest_record.total_uf} g"
+
     # 데이터 포맷팅
     exchange_details = "\n".join([
         f"- 회차 {ex.exchange_no}: 시각={ex.exchange_time.strftime('%H:%M')}, 주입액={ex.fill_concentration}%, 제수량={ex.uf}g"
@@ -118,7 +124,7 @@ def get_patient_records_summary(db: Session, user_id: int) -> str:
         f"소변 횟수: {latest_record.urine_count} 회\n"
         f"복막액 혼탁: {turbidity}\n"
         f"비고: {latest_record.notes or '없음'}\n"
-        f"제수량 합계: {latest_record.total_uf} g\n"
+        f"제수량 합계: {total_uf_str}\n"
         f"\n--- 회차별 투석 상세 기록 ({latest_record.record_date.strftime('%Y-%m-%d')}) ---\n"
         f"{exchange_details or '회차별 상세 기록 없음'}\n"
     )
@@ -188,7 +194,7 @@ def refine_query(db: Session, session_id: str, current_query: str) -> str:
         return response.text.strip().replace('"', '')
 
     except Exception as e:
-        print(f"[Query Refinement] 오류 발생: {e}. 원본 쿼리를 대신 사용합니다.")
+        logger.error(f"[Query Refinement] 오류 발생: {e}. 원본 쿼리를 대신 사용합니다.", exc_info=True)
         return current_query  # 실패 시 원본 쿼리 반환
 
 
@@ -251,7 +257,7 @@ def kdigo_vector_search(refined_query: str, db: Session) -> str:
 
     except Exception as e:
         # DB 연결, 임베딩 실패 등의 예외 처리
-        print(f"[Vector Search] 오류 발생: {e}")
+        logger.error(f"[Vector Search] 오류 발생: {e}", exc_info=True)
         return "KDIGO 검색 중 기술적인 오류가 발생했습니다."
 
 
@@ -321,7 +327,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
 
     except Exception as e:
         db.rollback()
-        print(f"[{session_id}] 메시지 처리 중 오류 발생: {e}")
+        logger.error(f"[{session_id}] 메시지 처리 중 오류 발생: {e}", exc_info=True)
         yield "메시지 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
         return
 
