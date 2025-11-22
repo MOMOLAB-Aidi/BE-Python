@@ -1,20 +1,13 @@
 import json
 import logging
 import os
-from datetime import date, datetime, time
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any
 
 from dotenv import load_dotenv
-from fastapi import HTTPException
 from google import genai
 from base64 import b64encode
 
 from google.cloud import storage
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
-from app.db_models.record import Record
-from app.db_models.record_exchange import RecordExchange
 
 load_dotenv()
 
@@ -116,41 +109,41 @@ def ocr_bytes_to_pdrecord_json(
         raise OcrError(f"지원하지 않는 형식입니다. 허용: {allowed}")
 
     prompt = (
-        "다음 이미지는 '복막투석기록일지'야. 표 안의 **실제 값**을 읽어 "
-        "아래 JSON 스키마에 맞춰 **정확히** 채워 반환해줘. "
-        "추가 설명/텍스트는 절대 출력하지 말고, **JSON만** 출력해줘.\n"
+        "The following image is a 'Peritoneal Dialysis Record Sheet.'"
+        "Read the actual values inside the table and fill out the JSON schema below exactly."
+        "Do NOT output any additional explanation or text—output JSON only.\n"
         "\n"
-        "규칙:\n"
-        "1) 이미지에 보이는 텍스트와 숫자만 사용해줘. 보이지 않는 값은 추측하지 말고 null로 둬.\n"
-        "2) 날짜는 YYYY-MM-DD로 변환(예: 2025년 9월 19일 → 2025-09-19).\n"
-        "3) 요일은 '월','화','수','목','금','토','일' 중 하나로 반환.\n"
-        "4) 시간은 오전/오후를 24시간제로 변환하여 HH:MM 형식으로 반환(예: 오전 6시 → 06:00, 오후 5시 → 17:00).\n"
-        "5) 수치는 단위를 제거하고 정수/실수로만 기록(예: 2.5%, 2000 g, 56 kg, 150/90 mmHg, 134 mg/dL 등). "
-        "읽기 어려우면 null. 공백/쉼표 제거.\n"
-        "6) 표의 교환 회차는 좌→우 순서대로 1,2,3,... 로 매핑해줘. 비어 있으면 그 회차는 제외하거나 null 처리.\n"
-        "7) '제수량 합계'가 표에 있으면 숫자로 반환. 없으면 null.\n"
-        "8) 혼탁(turbidity)은 '없음' 또는 '있음' 중 택1, 불명확하면 null.\n"
-        "9) blood_pressure는 'systolic'(수축)와 'diastolic'(이완)로 분리, 단위를 제외한 정수.\n"
-        "10) - '복막액 혼탁' 항목은 '없음'과 '있음' 중 동그라미/체크 표시된 쪽을 읽어 반환하라.\n"
-        "- 명확히 판별되지 않으면 null로 둬라.\n"
-        "- 두 항목 모두 표시되었으면 conflict: true 로 표시하라.\n"
-        "반환 JSON 스키마:\n"
+        "Rules:\n"
+        "1. Use only the text and numbers visible in the image. If a value is not visible, do not guess—set it to null.\n"
+        "2. Convert dates to the YYYY-MM-DD format. (Example: '2025년 9월 19일' → '2025-09-19')\n"
+        "3. Return the day of the week as one of the following: '월', '화', '수', '목', '금', '토', '일'\n"
+        "4. Convert AM/PM times to 24-hour HH:MM format. (Examples: '오전 6시' → 06:00, '오후 5시' → 17:00)\n"
+        "5. For all numerical values, remove units and return only integers or floats. (Examples: '2.5%' -> 2.5, '2000g' -> 2000, '56kg' -> 56, '150/90mmHg' -> {'systolic': 150, 'diastolic':90 }, '134mg/dL' -> 134\n"
+        "If the value is unclear or unreadable, return null. Remove spaces and commas.\n"
+        "6. Map exchange numbers from left → right in order (1, 2, 3, …). If an exchange is empty, exclude it or return null.\n"
+        "7. If a “Total Drain Volume” (제수량 합계) is present, return its numeric value. If not present, return null.\n"
+        "8. Turbidity (“혼탁”) must be either '없음' or '있음'. If unclear, return null.\n"
+        "9. For blood_pressure, separate into 'systolic' and 'diastolic' integers (units removed).\n"
+        "10. For the “복막액 혼탁” (turbidity) checkbox section: Return '없음' or '있음' depending on which circle/check mark is selected.\n"
+        "- If unclear, return null.\n"
+        "- If both options are marked, set conflict: true.\n"
+        "the JSON schema you must output:\n"
         "{\n"
-        '  "record_date": "YYYY-MM-DD" | null,\n'
+        '  "record_date": "YYYY-MM-DD" or null,\n'
         '  "record_dw": "월" | "화" | "수" | "목" | "금" | "토" | "일" | null,\n'
         '  "exchanges": [\n'
-        "    {\"exchange_no\": int, \"exchange_time\": \"HH:MM\" | null, "
-        "\"drain_volume\": int | null, \"fill_concentration\": float | null, "
-        "\"fill_volume\": int | null, \"uf\": int | null}\n"
+        "    {\"exchange_no\": int, \"exchange_time\": \"HH:MM\" or null, "
+        "\"drain_volume\": int or null, \"fill_concentration\": float or null, "
+        "\"fill_volume\": int or null, \"uf\": int or null}\n"
         "  ],\n"
-        '  "weight": float | null,\n'
-        '  "blood_pressure": {"systolic": int | null, "diastolic": int | null},\n'
-        '  "fasting_glucose": int | null,\n'
-        '  "urine_count": int | null,\n'
+        '  "weight": float or null,\n'
+        '  "blood_pressure": {"systolic": int or null, "diastolic": int or null},\n'
+        '  "fasting_glucose": int or null,\n'
+        '  "urine_count": int or null,\n'
         '  "turbidity": "없음" | "있음" | null,\n'
         '  "turbidity-conflict": true | false,\n'
-        '  "total_uf": int | null,\n'
-        '  "notes": string | null\n'
+        '  "total_uf": int or null,\n'
+        '  "notes": string or null\n'
         "}\n"
     )
 
