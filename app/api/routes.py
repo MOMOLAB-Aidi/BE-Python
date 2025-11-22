@@ -10,6 +10,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date, datetime
 
+from starlette.responses import StreamingResponse
+
 from app.core.db import get_db
 
 from app.db_models.record import Record
@@ -467,8 +469,7 @@ def start_chat_session(current_user: User = Depends(AuthTokenDep)):
 @router.post("/api/v1/consult/chat",
      tags=["에이전트 상담"],
      summary="에이전트 대화",
-     description="세션 ID를 사용하여 에이전트와 대화를 나눕니다.",
-     response_model=ChatResponse,
+     description="세션 ID를 사용하여 에이전트와 대화를 나눕니다."
 )
 def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(AuthTokenDep)):
 
@@ -480,11 +481,11 @@ def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), curre
         )
 
     # agentService를 통해 응답 생성
-    response_text = consultService.get_agent_response(db, current_user.id, request.session_id, request.message)
+    response_generator = consultService.get_agent_response_stream(db, current_user.id, request.session_id, request.message)
 
-    return ChatResponse(
-        session_id=request.session_id,
-        response=response_text
+    return StreamingResponse(
+        response_generator,
+        media_type="text/event-stream"
     )
 
 @router.post("/api/v1/consult/end",

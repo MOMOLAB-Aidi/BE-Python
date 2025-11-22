@@ -1,4 +1,5 @@
-from typing import Dict, Any
+import math
+from typing import Dict, Any, Generator
 
 from google import genai
 from google.genai import types
@@ -7,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db_models import Record
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
+from app.db_models.kdigo_chunk import kdigo_chunk
 
 # 메모리 내 임시 세션 저장소: {session_id: chat_session_object}
 # 서버가 실행되는 동안 대화 이력을 임시로 저장
@@ -46,10 +48,7 @@ def start_new_session(user_id: int, session_id: str) -> bool:
         return False
 
     if session_id in active_sessions:
-        # 기존 세션이 있다면, 요청한 user_id가 소유자와 일치하는지 확인
-        if active_sessions[session_id].get('user_id') != user_id:
-            return False # 소유자가 다르면 세션 시작 불가
-        return True
+        return active_sessions[session_id]["user_id"] == user_id
 
     try:
         # 시스템 프롬프트를 포함하는 GenerationConfig 객체 생성
@@ -62,7 +61,10 @@ def start_new_session(user_id: int, session_id: str) -> bool:
             model="gemini-2.5-flash",
             config=config
         )
-        active_sessions[session_id] = chat
+        active_sessions[session_id] = {
+            "user_id": user_id,
+            "chat": chat,
+        }
         return True
     except Exception as e:
         print(f"[{session_id}] 새로운 대화 시작 실패: {e}")
@@ -80,7 +82,6 @@ def get_session_status(user_id: int, session_id: str) -> bool:
 
 # 환자의 최신 복막투석 및 건강 기록을 조회하여 문자열로 포맷팅
 def get_patient_records_summary(db: Session, user_id: int) -> str:
-
     # 최신 기록 하나 조회
     latest_record = db.query(Record).filter(Record.user_id == user_id).order_by(desc(Record.record_date)).first()
 
@@ -109,28 +110,165 @@ def get_patient_records_summary(db: Session, user_id: int) -> str:
 
     return summary
 
-# 활성화된 세션을 사용하여 gemini 모델에 메시지를 보내고 응답 받는 로직
-def get_agent_response(db: Session, user_id: int, session_id: str, message: str) -> str:
+
+# RAG 로직을 위한 추가 시스템 프롬프트 정의
+QUERY_REFINEMENT_SYSTEM_PROMPT = """
+너는 대화 맥락을 이해하고 사용자의 질문을 독립적인 검색 쿼리로 변환하는 AI 비서야.
+현재 대화 기록과 사용자의 최신 질문을 분석하여, 벡터 데이터베이스에서 가장 정확한 정보를 검색할 수 있도록
+맥락이 모두 포함된 '단일의, 독립적인 검색 쿼리'만을 출력해줘.
+어떠한 설명이나 추가적인 문장 없이 오직 검색 쿼리 텍스트만 출력해야 해.
+
+[예시]
+최근 기록: "어제 병원에서 혈압이 145/90이 나왔다고 했어."
+환자 질문: "높은 혈압에 대해 KDIGO는 뭐라고 해?"
+출력: 복막투석 환자의 고혈압 관리를 위한 KDIGO 권장사항
+"""
+
+
+# DB에서 최근 대화 기록을 조회하여 쿼리 정제용 문자열로 포맷팅
+def get_session_history(db: Session, session_id: str, limit: int = 3) -> str:
+    history_logs = db.query(ConsultLog) \
+        .filter(ConsultLog.session_id == session_id) \
+        .order_by(desc(ConsultLog.created_at)) \
+        .limit(limit) \
+        .all()
+
+    # 순서를 오래된 것부터 최신 순으로 뒤집어 프롬프트에 사용
+    formatted_history = "\n".join([
+        f"{log.role.value}: {log.content}" for log in reversed(history_logs)
+    ])
+
+    return formatted_history
+
+
+# LLM을 사용하여 사용자의 질문을 독립적인 검색 쿼리로 정제
+def refine_query(db: Session, session_id: str, current_query: str) -> str:
+    try:
+        # 1. 최근 대화 기록과 현재 질문 가져오기
+        history = get_session_history(db, session_id, limit=3)
+
+        # 2. 쿼리 정제용 프롬프트 구성
+        refinement_prompt = (
+            f"--- 최근 대화 기록 (최대 3개) ---\n"
+            f"{history}\n"
+            f"--- 환자 최신 질문 ---\n"
+            f"{current_query}"
+        )
+
+        # 3. 쿼리 정제 LLM 호출 (시스템 프롬프트 적용)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=refinement_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=QUERY_REFINEMENT_SYSTEM_PROMPT
+            )
+        )
+
+        # 4. 출력에서 불필요한 공백/따옴표 제거 후 반환
+        return response.text.strip().replace('"', '')
+
+    except Exception as e:
+        print(f"[Query Refinement] 오류 발생: {e}. 원본 쿼리를 대신 사용합니다.")
+        return current_query  # 실패 시 원본 쿼리 반환
+
+
+# 두 벡터(list[float])의 코사인 유사도 계산
+def cosine_similarity(a, b) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+
+    return dot / norm_a / norm_b
+
+
+# 정제된 쿼리를 임베딩하여 벡터 DB에서 가장 관련성 높은 KDIGO 청크를 검색
+def kdigo_vector_search(refined_query: str, db: Session) -> str:
+    if not client:
+        return "KDIGO 검색 서비스가 초기화되지 않았습니다."
+
+    try:
+        # 1. 정제된 쿼리를 벡터로 임베딩 (gemini 임베딩 모델 사용)
+        embedding_result = client.embeddings.embed_content(
+            model="embedding-001",
+            content=refined_query
+        )
+        query_vector = embedding_result.embedding  # 쿼리 벡터 (리스트 형태)
+
+        # 2. DB에서 KDIGO 청크 + 임베딩 전부 가져오기
+        #    (kdigo_chunk.embedding 은 JSONB/ARRAY 로 저장된 list[float] 이라고 가정)
+        chunks = db.query(kdigo_chunk).all()
+
+        scored = []
+        for c in chunks:
+            if not c.embedding:
+                continue
+            score = cosine_similarity(query_vector, c.embedding)
+            scored.append((score, c.content))
+
+        # 3. 유사도 기준으로 정렬 (내림차순: 높을수록 유사)
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        # 4. Top-k + threshold 적용
+        TOP_K = 5
+        THRESHOLD = 0.3
+
+        top_contents = [
+            content
+            for score, content in scored
+            if score >= THRESHOLD
+        ][:TOP_K]
+
+        if not top_contents:
+            return "KDIGO 가이드라인에서 해당 질문과 관련된 구체적인 지침을 찾지 못했습니다."
+
+        kdigo_context = "\n".join([f"- {content}" for content in top_contents])
+        return f"--- KDIGO 가이드라인 (검색 근거) ---\n{kdigo_context}"
+
+    except Exception as e:
+        # DB 연결, 임베딩 실패 등의 예외 처리
+        print(f"[Vector Search] 오류 발생: {e}")
+        return "KDIGO 검색 중 기술적인 오류가 발생했습니다."
+
+
+# RAG 로직을 적용하고, 스트리밍 방식으로 응답을 생성 및 전송
+def get_agent_response_stream(db: Session, user_id: int, session_id: str, message: str) -> Generator[str, None, None]:
     if client is None:
-        return "서비스가 초기화되지 않았습니다. API 키 설정을 확인해주세요."
+        yield "서비스가 초기화되지 않았습니다. API 키 설정을 확인해주세요."
+        return
 
     chat_session = active_sessions.get(session_id)
     if chat_session is None:
-        return "세션이 활성화되지 않았습니다. 세션 ID를 확인하거나 세션을 새로 시작해주세요."
+        yield "세션이 활성화되지 않았습니다. 세션 ID를 확인하거나 세션을 새로 시작해주세요."
+        return
 
+    # DB 트랜잭션 시작 (로그 저장을 위해 사용)
     try:
-        # 환자 기록 조회 및 프롬프트 조합
+        # 1. 쿼리 정제 및 KDIGO 검색 (RAG)
+        # 1-1. 대화 맥락을 기반으로 쿼리 정제
+        refined_query = refine_query(db, session_id, message)
+
+        # 1-2. 정제된 쿼리로 KDIGO 벡터 DB 검색 수행
+        kdigo_context = kdigo_vector_search(refined_query, db)
+
+        # 1-3. 환자 기록 조회
         patient_records_text = get_patient_records_summary(db, user_id)
 
-        # AI 모델에 전달할 최종 메시지 구성
-        # 기록이 없을 경우에도 이 텍스트가 AI에게 전달됨.
+        # 2. AI 모델에 전달할 최종 RAG 프롬프트 구성
         full_message = (
             f"--- 환자 최신 기록 ---\n"
             f"{patient_records_text}\n"
-            f"--- 환자 질문 ---\n"
+            f"\n{kdigo_context}\n"  # KDIGO 검색 결과 삽입
+            f"\n--- 환자 질문 ---\n"
             f"{message}"
         )
 
+        # 3. 사용자 질문 DB 로그 저장
         user_log = ConsultLog(
             user_id=user_id,
             session_id=session_id,
@@ -140,25 +278,32 @@ def get_agent_response(db: Session, user_id: int, session_id: str, message: str)
         db.add(user_log)
         db.commit()
 
-        # 2. 모델에게 메시지 전송 및 응답 받기
-        response = chat_session.send_message(full_message)
-        agent_response_text = response.text
+        # 4. 모델에게 메시지 전송 및 스트림 응답 받기 (stream --> realtime)
+        stream = chat_session.send_message_stream(full_message)
 
-        # 3. 에이전트 응답을 DB에 저장
+        full_response_text = ""
+
+        # 5. 스트림을 통해 응답을 실시간으로 사용자에게 전달
+        for chunk in stream:
+            chunk_text = chunk.text
+            yield chunk_text  # 실시간 응답 전송
+            full_response_text += chunk_text
+
+        # 6. 스트림 완료 후, 전체 응답을 DB에 저장
         agent_log = ConsultLog(
             user_id=user_id,
             session_id=session_id,
             role=ConsultRoleEnum.AGENT,
-            content=agent_response_text
+            content=full_response_text  # 취합된 최종 텍스트 저장
         )
         db.add(agent_log)
         db.commit()
 
-        return agent_response_text
-
-    except Exception:
+    except Exception as e:
         db.rollback()
-        return "메시지 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        print(f"[{session_id}] 메시지 처리 중 오류 발생: {e}")
+        yield "메시지 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+        return
 
 
 # 활성화된 세션을 메모리에서 제거
