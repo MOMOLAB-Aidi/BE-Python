@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db_models.record import Record
 from app.db_models.record_exchange import RecordExchange
-from app.services.ocrService import delete_from_gcs, OcrError
+from app.services.ocr_service import delete_from_gcs, OcrError
 
 
 # =========================

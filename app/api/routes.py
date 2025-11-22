@@ -19,14 +19,14 @@ from app.db_models.record_exchange import RecordExchange
 from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
-from app.models.consuleSchemas import SessionStartResponse, ChatResponse, ChatRequest, SessionEndResponse, \
+from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
     SessionEndRequest
 
-from app.models.recordSchemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
-from app.services import consultService
-from app.services.ocrService import OcrError, ocr_bytes_to_pdrecord_json, \
+from app.models.record_schemas import RecordCommonPatch, RecordCommonCreate, RecordExchangeCreate, RecordExchangePatch
+from app.services.consult_service import end_session, get_agent_response_stream, get_session_status, start_new_session
+from app.services.ocr_service import OcrError, ocr_bytes_to_pdrecord_json, \
     upload_to_gcs, delete_from_gcs, download_from_gcs
-from app.services.recordService import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
+from app.services.record_service import rec_to_dict, apply_record_patch, ex_to_dict, create_exchange, \
     create_record_common, patch_exchange, delete_record, get_latest_records
 
 router = APIRouter()
@@ -456,7 +456,7 @@ def start_chat_session(current_user: User = Depends(AuthTokenDep)):
     session_id = str(uuid.uuid4())
 
     # 세션 생성 로직 호출
-    if consultService.start_new_session(current_user.id, session_id):
+    if start_new_session(current_user.id, session_id):
         return SessionStartResponse(
             session_id=session_id,
             message="안녕하세요! 복막투석 AI 상담사입니다. 투석 관리, 일반 지침, 건강 상태 등에 대해 무엇이든 물어보세요."
@@ -474,14 +474,14 @@ def start_chat_session(current_user: User = Depends(AuthTokenDep)):
 def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(AuthTokenDep)):
 
     # 세션 활성화 상태 확인
-    if not consultService.get_session_status(current_user.id, request.session_id):
+    if not get_session_status(current_user.id, request.session_id):
         raise HTTPException(
             status_code=404,
             detail="활성화된 세션을 찾을 수 없습니다. `/start`를 통해 세션을 시작해주세요."
         )
 
     # agentService를 통해 응답 생성
-    response_generator = consultService.get_agent_response_stream(db, current_user.id, request.session_id, request.message)
+    response_generator = get_agent_response_stream(db, current_user.id, request.session_id, request.message)
 
     return StreamingResponse(
         response_generator,
@@ -500,7 +500,7 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
     if not session_id:
         raise HTTPException(status_code=400, detail="세션 ID가 요청 본문에 포함되어야 합니다.")
 
-    if consultService.end_session(current_user.id, session_id):
+    if end_session(current_user.id, session_id):
         return SessionEndResponse(
             session_id=session_id,
             status="세션이 성공적으로 종료되었습니다. 이용해 주셔서 감사합니다."
