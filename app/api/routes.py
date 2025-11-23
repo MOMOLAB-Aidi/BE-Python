@@ -10,10 +10,9 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date, datetime, date
 
-from starlette.responses import JSONResponse, StreamingResponse
+from starlette.responses import StreamingResponse
 
 from app.core.db import get_db
-from app.db_models import ConsultLog
 
 from app.db_models.record import Record
 from app.db_models.user import User
@@ -488,12 +487,21 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
     response_model=list[ConsultSessionSummary],
 )
 def get_consult_history_routes(
+    skip: int = Query(0, ge=0, description="건너뛸 레코드 수"),
+    limit: int = Query(50, ge=1, le=100, description="조회할 최대 레코드 수"),
     db: Session = Depends(get_db),
     current_user: User = Depends(AuthTokenDep),
 ):
-    summaries_dict = get_consult_history(db, current_user.id)
-    # dict → Pydantic 모델로 변환
-    return [ConsultSessionSummary(**s) for s in summaries_dict]
+    try:
+        summaries_dict = get_consult_history(db, current_user.id, skip=skip, limit=limit)
+        # dict → Pydantic 모델로 변환
+        return [ConsultSessionSummary(**s) for s in summaries_dict]
+    except SQLAlchemyError as e:
+        logger.exception("상담 기록 조회 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="상담 기록 조회 중 서버 오류가 발생했습니다.",
+        ) from e
 
 
 @router.get(
@@ -516,11 +524,4 @@ def get_consult_history_detail_routes(
             detail="해당 상담 기록을 찾을 수 없습니다.",
         )
 
-    return [
-        ConsultMessage(
-            role=log.role.value if hasattr(log.role, "value") else log.role,
-            content=log.content,
-            created_at=log.created_at,
-        )
-        for log in logs
-    ]
+    return [ConsultMessage(**log.__dict__) for log in logs]

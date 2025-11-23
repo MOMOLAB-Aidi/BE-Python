@@ -1,8 +1,11 @@
 from datetime import datetime
-from typing import Literal
+from enum import Enum
 
 from app.models.record_schemas import ORMBase
 
+class MessageRole(str, Enum):
+    USER = "USER"
+    AGENT = "AGENT"
 
 # 환영 메시지
 class SessionStartResponse(ORMBase):
@@ -34,6 +37,6 @@ class ConsultSessionSummary(ORMBase):
     message_count: int          # 총 메시지 개수
 
 class ConsultMessage(ORMBase):
-    role: Literal["USER", "AGENT"]
+    role: MessageRole
     content: str
     created_at: datetime

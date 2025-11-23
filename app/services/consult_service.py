@@ -369,8 +369,8 @@ def end_session(user_id: int, session_id: str) -> bool:
 
 
 # 특정 환자의 전체 상담 목록 조회
-def get_consult_history(db: Session, user_id: int) -> list[dict]:
-    rows = (
+def get_consult_history(db: Session, user_id: int, skip: int = 0, limit: int = 50,) -> list[dict]:
+    base_query = (
         db.query(
             ConsultLog.session_id.label("session_id"),
             func.min(ConsultLog.created_at).label("started_at"),
@@ -379,6 +379,13 @@ def get_consult_history(db: Session, user_id: int) -> list[dict]:
         .filter(ConsultLog.user_id == user_id)
         .group_by(ConsultLog.session_id)
         .order_by(desc(func.max(ConsultLog.created_at)))
+    )
+
+    # 페이징 적용
+    rows = (
+        base_query
+        .offset(skip)
+        .limit(limit)
         .all()
     )
 
