@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import Dict, Any, Generator
 
 from google import genai
@@ -9,6 +10,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.db_models import Record
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
 from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
+
+
+session_lock = threading.RLock()
 
 # 메모리 내 임시 세션 저장소: {session_id: chat_session_object}
 # 서버가 실행되는 동안 대화 이력을 임시로 저장
@@ -63,37 +67,38 @@ def start_new_session(user_id: int, session_id: str) -> bool:
     if client is None:
         return False
 
-    if session_id in active_sessions:
-        return active_sessions[session_id]["user_id"] == user_id
+    with session_lock:
+        # 이미 세션이 있다면 소유자만 같으면 재사용
+        if session_id in active_sessions:
+            return active_sessions[session_id]["user_id"] == user_id
 
-    try:
-        # 시스템 프롬프트를 포함하는 GenerationConfig 객체 생성
-        config = types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT
-        )
+        else:
+            try:
+                config = types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT
+                )
 
-        # config 객체를 전달하여 시스템 프롬프트 설정
-        chat = client.chats.create(
-            model="gemini-2.5-flash",
-            config=config
-        )
-        active_sessions[session_id] = {
-            "user_id": user_id,
-            "chat": chat,
-        }
-        return True
-    except Exception as e:
-        logger.error(f"[{session_id}] 새로운 대화 시작 실패: {e}", exc_info=True)
-        return False
+                chat = client.chats.create(
+                    model="gemini-2.5-flash",
+                    config=config
+                )
+                active_sessions[session_id] = {
+                    "user_id": user_id,
+                    "chat": chat,
+                }
+                return True
+            except Exception as e:
+                logger.error(f"[{session_id}] 새로운 대화 시작 실패: {e}", exc_info=True)
+                return False
 
 
 # 특정 세션 ID의 활성화 상태를 확인
 def get_session_status(user_id: int, session_id: str) -> bool:
-    session_data = active_sessions.get(session_id)
-    if session_data is None:
-        return False
-    # 세션이 존재하고, 요청한 user_id가 세션 소유자와 일치하는 경우 True 반환
-    return session_data.get('user_id') == user_id
+    with session_lock:
+        session_data = active_sessions.get(session_id)
+        if session_data is None:
+            return False
+        return session_data.get("user_id") == user_id
 
 
 # 환자의 최신 복막투석 및 건강 기록을 조회하여 문자열로 포맷팅
@@ -259,16 +264,23 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         yield "서비스가 초기화되지 않았습니다. API 키 설정을 확인해주세요."
         return
 
-    session_data = active_sessions.get(session_id)
-    if session_data is None:
-        yield "세션이 활성화되지 않았습니다. 세션 ID를 확인하거나 세션을 새로 시작해주세요."
-        return
+    with session_lock:
+        session_data = active_sessions.get(session_id)
 
-    # 실제 chat 객체 꺼내기
-    chat = session_data.get("chat")
-    if chat is None:
-        yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
-        return
+        if session_data is None:
+            yield "세션이 활성화되지 않았습니다. 세션 ID를 확인하거나 세션을 새로 시작해주세요."
+            return
+
+        if session_data.get('user_id') != user_id:
+            yield "권한이 없습니다."
+            return
+
+        # 필요한 데이터를 미리 복사
+        chat = session_data["chat"]
+        user_id_verified = session_data["user_id"]
+        if chat is None:
+            yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
+            return
 
     # DB 트랜잭션 시작 (로그 저장을 위해 사용)
     full_response_text = ""
@@ -281,7 +293,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         # 1. 쿼리 정제 및 KDIGO 검색 (RAG)
         refined_query = refine_query(db, session_id, message)
         kdigo_context = kdigo_vector_search(refined_query, db)
-        patient_records_text = get_patient_records_summary(db, user_id)
+        patient_records_text = get_patient_records_summary(db, user_id_verified)
 
         # 2. AI 모델에 전달할 최종 RAG 프롬프트 구성
         full_message = (
@@ -294,14 +306,14 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
 
         # 3. 사용자 질문 DB 로그 저장
         user_log = ConsultLog(
-            user_id=user_id,
+            user_id=user_id_verified,
             session_id=session_id,
             role=ConsultRoleEnum.USER,
             content=message
         )
         db.add(user_log)
         agent_log = ConsultLog(
-            user_id=user_id,
+            user_id=user_id_verified,
             session_id=session_id,
             role=ConsultRoleEnum.AGENT,
             content=""  # 비어있는 상태로 생성(스트리밍 도중 클라이언트가 끊겨도 최소한 "이 턴에 응답을 시도했다"는 행 남기기)
@@ -342,15 +354,15 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
 
 # 활성화된 세션을 메모리에서 제거
 def end_session(user_id: int, session_id: str) -> bool:
-    session_data = active_sessions.get(session_id)
-    if session_data is None:
-        return False
+    with session_lock:
+        session_data = active_sessions.get(session_id)
+        if session_data is None:
+            return False
 
-    # 사용자 ID 인증 확인
-    if session_data.get('user_id') != user_id:
-        logger.warning(f"[{session_id}] 세션 종료 권한 없음: 요청={user_id}, 소유자={session_data.get('user_id')}")
-        return False
+        if session_data.get("user_id") != user_id:
+            logger.warning(f"[{session_id}] 세션 종료 권한 없음: 요청={user_id}, 소유자={session_data.get('user_id')}")
+            return False
 
-    # DB에 저장된 대화 기록은 유지하고, 메모리 내의 세션만 삭제
-    del active_sessions[session_id]
-    return True
+        # 메모리에서만 제거 (DB 로그는 유지)
+        del active_sessions[session_id]
+        return True
