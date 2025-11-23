@@ -266,20 +266,20 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
     with session_lock:
         session_data = active_sessions.get(session_id)
 
-    if session_data is None:
-        yield "세션이 활성화되지 않았습니다. 세션 ID를 확인하거나 세션을 새로 시작해주세요."
-        return
+        if session_data is None:
+            yield "세션이 활성화되지 않았습니다. 세션 ID를 확인하거나 세션을 새로 시작해주세요."
+            return
 
-    if session_data.get('user_id') != user_id:
-        yield "권한이 없습니다."
-        return
+        if session_data.get('user_id') != user_id:
+            yield "권한이 없습니다."
+            return
 
-    # 필요한 데이터를 미리 복사
-    chat = session_data["chat"]
-    user_id_verified = session_data["user_id"]
-    if chat is None:
-        yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
-        return
+        # 필요한 데이터를 미리 복사
+        chat = session_data["chat"]
+        user_id_verified = session_data["user_id"]
+        if chat is None:
+            yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
+            return
 
     # DB 트랜잭션 시작 (로그 저장을 위해 사용)
     full_response_text = ""
