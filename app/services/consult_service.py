@@ -270,8 +270,13 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         yield "세션이 활성화되지 않았습니다. 세션 ID를 확인하거나 세션을 새로 시작해주세요."
         return
 
-    # 실제 chat 객체 꺼내기
-    chat = session_data.get("chat")
+    if session_data.get('user_id') != user_id:
+        yield "권한이 없습니다."
+        return
+
+    # 필요한 데이터를 미리 복사
+    chat = session_data["chat"]
+    user_id_verified = session_data["user_id"]
     if chat is None:
         yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
         return
@@ -287,7 +292,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         # 1. 쿼리 정제 및 KDIGO 검색 (RAG)
         refined_query = refine_query(db, session_id, message)
         kdigo_context = kdigo_vector_search(refined_query, db)
-        patient_records_text = get_patient_records_summary(db, user_id)
+        patient_records_text = get_patient_records_summary(db, user_id_verified)
 
         # 2. AI 모델에 전달할 최종 RAG 프롬프트 구성
         full_message = (
@@ -300,14 +305,14 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
 
         # 3. 사용자 질문 DB 로그 저장
         user_log = ConsultLog(
-            user_id=user_id,
+            user_id=user_id_verified,
             session_id=session_id,
             role=ConsultRoleEnum.USER,
             content=message
         )
         db.add(user_log)
         agent_log = ConsultLog(
-            user_id=user_id,
+            user_id=user_id_verified,
             session_id=session_id,
             role=ConsultRoleEnum.AGENT,
             content=""  # 비어있는 상태로 생성(스트리밍 도중 클라이언트가 끊겨도 최소한 "이 턴에 응답을 시도했다"는 행 남기기)
