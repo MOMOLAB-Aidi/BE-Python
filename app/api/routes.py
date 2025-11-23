@@ -436,7 +436,7 @@ def start_chat_session(current_user: User = Depends(AuthTokenDep)):
 @router.post("/api/v1/consult/chat",
      tags=["에이전트 상담"],
      summary="에이전트 대화",
-     description="세션 ID를 사용하여 에이전트와 대화를 나눕니다."
+     description="세션 ID를 사용하여 에이전트와 대화를 나눕니다. 응답은 text/plain 형식의 스트리밍으로 실시간 전달됩니다."
 )
 def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), current_user: User = Depends(AuthTokenDep)):
 

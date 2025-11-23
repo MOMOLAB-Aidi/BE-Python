@@ -24,7 +24,7 @@ If the user speaks Korean, respond in Korean. Never answer in English unless the
 
 [Response Style & Format]
 1. Provide concise, factual, non-emotional, non-conversational guidance.
-2. Analyze the patient’s latest health record and focus only on data relevant to the question.
+2. Analyze the patient's latest health record and focus only on data relevant to the question.
 3. Do not mention KDIGO or any guideline source explicitly.
 4. Provide clear, actionable lifestyle or monitoring suggestions.
 5. Do NOT include medical disclaimer sentences in every response.
@@ -45,7 +45,7 @@ When emergency guidance is required, output the following message **in Korean**:
 Never output this sentence unless the symptoms above are detected.
 
 [Data Processing Rules]
-1. Focus strictly on the data relevant to the user’s question.
+1. Focus strictly on the data relevant to the user's question.
 2. Do not modify dialysis prescriptions, dwell times, medication doses, or glucose concentrations.
 3. Lifestyle, sodium intake, fluid balance, and symptom-related recommendations ARE allowed.
 """
@@ -149,15 +149,16 @@ def get_patient_records_summary(db: Session, user_id: int) -> str:
 
 # RAG 로직을 위한 추가 시스템 프롬프트 정의
 QUERY_REFINEMENT_SYSTEM_PROMPT = """
-너는 대화 맥락을 이해하고 사용자의 질문을 독립적인 검색 쿼리로 변환하는 AI 비서야.
-현재 대화 기록과 사용자의 최신 질문을 분석하여, 벡터 데이터베이스에서 가장 정확한 정보를 검색할 수 있도록
-맥락이 모두 포함된 '단일의, 독립적인 검색 쿼리'만을 출력해줘.
-어떠한 설명이나 추가적인 문장 없이 오직 검색 쿼리 텍스트만 출력해야 해.
+You are an AI assistant that understands the conversation context and converts the user's question into an independent search query.
+Analyze the current conversation history and the user's latest question, and output a single, self-contained search query
+that contains all necessary context so that the vector database can retrieve the most accurate information.
 
-[예시]
-최근 기록: "어제 병원에서 혈압이 145/90이 나왔다고 했어."
-환자 질문: "높은 혈압에 대해 KDIGO는 뭐라고 해?"
-출력: 복막투석 환자의 고혈압 관리를 위한 KDIGO 권장사항
+You must output only the search query text itself, with no explanations or additional sentences.
+
+[Example]
+Recent history: "Yesterday at the hospital my blood pressure was 145/90."
+Patient question: "What does KDIGO say about high blood pressure?"
+Output: KDIGO recommendations for managing high blood pressure in peritoneal dialysis patients
 """
 
 
@@ -294,6 +295,11 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         return
 
     # DB 트랜잭션 시작 (로그 저장을 위해 사용)
+    full_response_text = ""
+    agent_log = None
+
+    # 정상 종료 -> agent_log.content = full_response_text
+    # 중간에 끊김 -> finally에서 "[스트리밍 중단 - 부분 응답]"이라도 채워서 저장
     try:
         # 1. 쿼리 정제 및 KDIGO 검색 (RAG)
         refined_query = refine_query(db, session_id, message)
@@ -317,12 +323,19 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             content=message
         )
         db.add(user_log)
-        db.flush()  # ID 생성만 하고 커밋 x
+        db.commit()
 
-        # 4. 모델에게 메시지 전송 및 스트림 응답 받기 (stream --> realtime)
+        agent_log = ConsultLog(
+            user_id=user_id,
+            session_id=session_id,
+            role=ConsultRoleEnum.AGENT,
+            content=""  # 비어있는 상태로 생성(스트리밍 도중 클라이언트가 끊겨도 최소한 "이 턴에 응답을 시도했다"는 행 남기기)
+        )
+        db.add(agent_log)
+        db.commit()
+
+        # 4. 스트리밍 시작
         stream = chat.send_message_stream(full_message)
-
-        full_response_text = ""
 
         # 5. 스트림을 통해 응답을 실시간으로 사용자에게 전달
         for chunk in stream:
@@ -333,21 +346,23 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             full_response_text += chunk_text
             yield chunk_text  # 실시간 응답 전송
 
-        # 6. 스트림 완료 후, 전체 응답을 DB에 저장
-        agent_log = ConsultLog(
-            user_id=user_id,
-            session_id=session_id,
-            role=ConsultRoleEnum.AGENT,
-            content=full_response_text  # 취합된 최종 텍스트 저장
-        )
-        db.add(agent_log)
-        db.commit() # 두 로그를 함께 커밋
+        # 스트리밍이 정상 종료된 경우에만 content 업데이트
+        agent_log.content = full_response_text
+        db.commit()
 
     except Exception as e:
         db.rollback()
         logger.error(f"[{session_id}] 메시지 처리 중 오류 발생: {e}", exc_info=True)
         yield "메시지 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
-        return
+    finally:
+        # 스트림이 중간에 끊겨도 최소한 저장은 되도록 보장
+        if agent_log:
+            try:
+                agent_log.content = full_response_text or "[스트리밍 중단 — 부분 응답]"
+                db.commit()
+            except Exception as e:
+                logger.error(f"[{session_id}] agent_log 저장 실패: {e}", exc_info=True)
+                db.rollback()
 
 
 # 활성화된 세션을 메모리에서 제거
