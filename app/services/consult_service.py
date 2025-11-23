@@ -4,7 +4,7 @@ from typing import Dict, Any, Generator
 
 from google import genai
 from google.genai import types
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, func
 from sqlalchemy.orm import Session, selectinload
 
 from app.db_models import Record
@@ -366,3 +366,45 @@ def end_session(user_id: int, session_id: str) -> bool:
         # 메모리에서만 제거 (DB 로그는 유지)
         del active_sessions[session_id]
         return True
+
+
+# 특정 환자의 전체 상담 목록 조회
+def get_consult_history(db: Session, user_id: int) -> list[dict]:
+    rows = (
+        db.query(
+            ConsultLog.session_id.label("session_id"),
+            func.min(ConsultLog.created_at).label("started_at"),
+            func.count().label("message_count"),
+        )
+        .filter(ConsultLog.user_id == user_id)
+        .group_by(ConsultLog.session_id)
+        .order_by(desc(func.max(ConsultLog.created_at)))
+        .all()
+    )
+
+    # 라우터에서 Pydantic으로 감싸기 편하게 dict 리스트로 변환
+    return [
+        {
+            "session_id": r.session_id,
+            "started_at": r.started_at,
+            "message_count": r.message_count,
+        }
+        for r in rows
+    ]
+
+# 특정 환자의 특정 세션에 대한 USER/AGENT 대화 로그 전체를 시간순으로 조회
+def get_consult_history_detail(
+    db: Session,
+    user_id: int,
+    session_id: str,
+):
+    logs = (
+        db.query(ConsultLog)
+        .filter(
+            ConsultLog.user_id == user_id,
+            ConsultLog.session_id == session_id,
+        )
+        .order_by(ConsultLog.created_at.asc())
+        .all()
+    )
+    return logs

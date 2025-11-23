@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from app.models.record_schemas import ORMBase
@@ -32,3 +33,8 @@ class ConsultSessionSummary(ORMBase):
     session_id: str
     started_at: datetime        # 해당 세션의 첫 메시지 시각
     message_count: int          # 총 메시지 개수
+
+class ConsultMessage(ORMBase):
+    role: Literal["USER", "AGENT"]
+    content: str
+    created_at: datetime

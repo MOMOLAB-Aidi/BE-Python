@@ -20,10 +20,11 @@ from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
-    SessionEndRequest, ConsultSessionSummary
+    SessionEndRequest, ConsultSessionSummary, ConsultMessage
 from app.models.record_schemas import WeeklyAverageResponse, WeeklyAverageData, RecordCommonCreate, RecordCommonPatch, \
     RecordExchangeCreateList, RecordExchangeUpdateList
-from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session
+from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
+    get_consult_history, get_consult_history_detail
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
     download_from_gcs
 from app.services.record_service import get_weekly_average_records, create_record_common, rec_to_dict, \
@@ -486,29 +487,45 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
     description="세션별 상담 이력을 하나씩 묶어 전체 상담 기록 목록을 조회합니다.",
     response_model=list[ConsultSessionSummary],
 )
-def get_consult_history(
+def get_consult_history_routes(
     db: Session = Depends(get_db),
     current_user: User = Depends(AuthTokenDep),
 ):
+    summaries_dict = get_consult_history(db, current_user.id)
+    # dict → Pydantic 모델로 변환
+    return [ConsultSessionSummary(**s) for s in summaries_dict]
 
-    rows = (
-        db.query(
-            ConsultLog.session_id.label("session_id"),
-            func.min(ConsultLog.created_at).label("started_at"),
-            func.count(ConsultLog.id).label("message_count"),
-        )
-        .filter(ConsultLog.user_id == current_user.id)
-        .group_by(ConsultLog.session_id)
-        .order_by(func.max(ConsultLog.created_at).desc())  # 최근 상담 먼저
-        .all()
-    )
 
-    # SQLAlchemy Row → Pydantic 모델로 변환
-    return [
-        ConsultSessionSummary(
-            session_id=row.session_id,
-            started_at=row.started_at,
-            message_count=row.message_count,
+@router.get(
+    "/api/v1/consult/history/{session_id}",
+    tags=["에이전트 상담"],
+    summary="특정 상담 세션 상세 조회",
+    description="특정 세션에 대해 상담 로그를 시간순으로 조회합니다.",
+    response_model=list[ConsultMessage],
+)
+def get_consult_history_detail_routes(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
+):
+    logs = get_consult_history_detail(db, current_user.id, session_id)
+
+    if not logs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="해당 상담 기록을 찾을 수 없습니다.",
         )
-        for row in rows
-    ]
+
+    result: list[ConsultMessage] = []
+    for log in logs:
+        role_value = log.role.value if hasattr(log.role, "value") else log.role
+
+        result.append(
+            ConsultMessage(
+                role=role_value,
+                content=log.content,
+                created_at=log.created_at,
+            )
+        )
+
+    return result
