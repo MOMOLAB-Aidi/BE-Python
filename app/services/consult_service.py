@@ -312,8 +312,11 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         # 5. 스트림을 통해 응답을 실시간으로 사용자에게 전달
         for chunk in stream:
             chunk_text = chunk.text
-            yield chunk_text  # 실시간 응답 전송
+            if not chunk_text:
+                continue
+
             full_response_text += chunk_text
+            yield chunk_text  # 실시간 응답 전송
 
         # 6. 스트림 완료 후, 전체 응답을 DB에 저장
         agent_log = ConsultLog(

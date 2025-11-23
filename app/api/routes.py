@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date, datetime, date
 
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
 
 from app.core.db import get_db
 
@@ -447,14 +447,17 @@ def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), curre
             detail="활성화된 세션을 찾을 수 없습니다. `/start`를 통해 세션을 시작해주세요."
         )
 
-    # 스트림을 돌면서 전체 텍스트를 하나로 합치기
-    full_text = ""
-    for chunk in get_agent_response_stream(
-        db, current_user.id, request.session_id, request.message
-    ):
-        full_text += chunk
+    stream = get_agent_response_stream(
+        db,
+        current_user.id,
+        request.session_id,
+        request.message,
+    )
 
-    return JSONResponse(content={"answer": full_text})
+    return StreamingResponse(
+        stream,
+        media_type="text/plain; charset=utf-8",
+    )
 
 @router.post("/api/v1/consult/end",
      tags=["에이전트 상담"],
