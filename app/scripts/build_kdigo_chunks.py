@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from langchain_community.document_loaders import PyPDFLoader
@@ -15,6 +16,7 @@ PDF_FILES = [
 
 engine = get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+logger = logging.getLogger(__name__)
 
 def main():
     all_docs = []
@@ -22,16 +24,16 @@ def main():
     # 1. 여러 PDF 로드해서 한꺼번에 텍스트로 모으기
     for pdf_path in PDF_FILES:
         if not pdf_path.exists():
-            print(f"[경고] PDF 파일을 찾을 수 없습니다: {pdf_path}")
+            logger.warning(f"[경고] PDF 파일을 찾을 수 없습니다: {pdf_path}")
             continue
 
-        print(f"[INFO] PDF 로딩 중: {pdf_path}")
+        logger.info(f"[INFO] PDF 로딩 중: {pdf_path}")
         loader = PyPDFLoader(str(pdf_path))
         docs = loader.load()
         all_docs.extend(docs)
 
     if not all_docs:
-        print("[ERROR] 로드된 PDF 문서가 없습니다. PDF 경로를 확인하세요.")
+        logger.error("[ERROR] 로드된 PDF 문서가 없습니다. PDF 경로를 확인하세요.")
         return
 
     # LangChain Document 리스트 → 하나의 큰 텍스트로 합치기
@@ -42,7 +44,7 @@ def main():
     try:
         # 3. 청크 + 임베딩 + DB 저장
         count = build_kdigo_chunks(db, kdigo_text, clear_existing=True)
-        print(f"[완료] {count}개 KDIGO 청크가 저장되었습니다.")
+        logger.info(f"[완료] {count}개 KDIGO 청크가 저장되었습니다.")
     finally:
         db.close()
 

@@ -7,7 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from app.db_models.kdigo_chunk import KdigoChunk
+from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,16 @@ def embed_texts_with_gemini(texts: Iterable[str]) -> list[list[float]]:
 
     # response.embeddings -> 각 embedding 객체, 실제 벡터는 .values 에 들어 있음
     embeddings: list[list[float]] = [e.values for e in response.embeddings]
+
+    # DB 정의와 실제 임베딩 차원 수가 맞는지 검증
+    if embeddings:
+        dim = len(embeddings[0])
+        if dim != KDIGO_EMBED_DIM:
+            raise RuntimeError(
+                f"임베딩 차원이 DB 정의와 일치하지 않습니다. "
+                f"model_dim={dim}, db_dim={KDIGO_EMBED_DIM}"
+            )
+
     return embeddings
 
 

@@ -4,7 +4,7 @@ from typing import Dict, Any, Generator
 
 from google import genai
 from google.genai import types
-from sqlalchemy import desc
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db_models import Record
@@ -242,28 +242,15 @@ def kdigo_vector_search(refined_query: str, db: Session) -> str:
         )
         query_vector = resp.embeddings[0].values  # 쿼리 벡터 (리스트 형태)
 
-        # 2. DB에서 KDIGO 청크 + 임베딩 전부 가져오기
-        chunks = db.query(KdigoChunk).all()
-
-        scored = []
-        for c in chunks:
-            if not c.embedding:
-                continue
-            score = cosine_similarity(query_vector, c.embedding)
-            scored.append((score, c.content))
-
-        # 3. 유사도 기준으로 정렬 (내림차순: 높을수록 유사)
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        # 4. Top-k + threshold 적용
+        # 2. pgvector 연산자를 활용한 벡터 검색
         TOP_K = 5
-        THRESHOLD = 0.3
+        stmt = (
+            select(KdigoChunk.content)
+            .order_by(KdigoChunk.embedding.cosine_distance(query_vector))
+            .limit(TOP_K)
+        )
 
-        top_contents = [
-            content
-            for score, content in scored
-            if score >= THRESHOLD
-        ][:TOP_K]
+        top_contents = db.execute(stmt).scalars().all()
 
         if not top_contents:
             return "KDIGO 가이드라인에서 해당 질문과 관련된 구체적인 지침을 찾지 못했습니다."
