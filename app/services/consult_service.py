@@ -235,9 +235,9 @@ def kdigo_vector_search(refined_query: str, db: Session) -> str:
         return "KDIGO 검색 서비스가 초기화되지 않았습니다."
 
     try:
-        # 1. 정제된 쿼리를 벡터로 임베딩 (gemini 임베딩 모델 사용)
+        # 1. 정제된 쿼리를 벡터로 임베딩
         resp = client.models.embed_content(
-            model="gemini-embedding-001",  # kdigo_preprocess와 동일
+            model="text-embedding-004",
             contents=[refined_query],  # batched input
         )
         query_vector = resp.embeddings[0].values  # 쿼리 벡터 (리스트 형태)

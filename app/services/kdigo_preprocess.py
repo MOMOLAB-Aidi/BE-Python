@@ -7,7 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
+from app.db_models.kdigo_chunk import KdigoChunk
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ def chunk_kdigo_text(
     return chunks
 
 
+# KDIGO 임베딩 설정
+KDIGO_EMBED_DIM = 768
+
 # gemini embedding-001 모델로 여러 텍스트를 임베딩
 # 배치 크기 제한
 @retry(
@@ -58,7 +61,7 @@ def embed_texts_with_gemini(texts: Iterable[str]) -> list[list[float]]:
     try:
         # 한 번에 배치로 임베딩
         response = client.models.embed_content(
-            model="gemini-embedding-001",
+            model="text-embedding-004",
             contents=text_list,
         )
     except Exception as e:
