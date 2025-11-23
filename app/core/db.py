@@ -130,12 +130,13 @@ def get_engine() -> Engine:
     return _engine
 
 
-def init_pgvector_extension():
+def init_pgvector_extension() -> None:
     engine = get_engine()
-    if engine.dialect.name == "postgresql":
-        with engine.connect() as conn:
+    if engine.dialect.name != "postgresql":
+        return
+    # DDL을 멱등하도록 한 번만 실행, begin()이 커밋까지 처리
+    with engine.begin() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            conn.commit()
 
 
 # 요청 단위 세션

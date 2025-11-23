@@ -1,5 +1,4 @@
 import logging
-import math
 from typing import Dict, Any, Generator
 
 from google import genai
@@ -9,7 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db_models import Record
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
-from app.db_models.kdigo_chunk import KdigoChunk
+from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
 
 # 메모리 내 임시 세션 저장소: {session_id: chat_session_object}
 # 서버가 실행되는 동안 대화 이력을 임시로 저장
@@ -227,10 +226,9 @@ def kdigo_vector_search(refined_query: str, db: Session) -> str:
         )
         query_vector = resp.embeddings[0].values  # 쿼리 벡터 (리스트 형태)
 
-        EXPECTED_DIM = 768 # KDIGO_EMBED_DIM과 일치해야 함
-        if len(query_vector) != EXPECTED_DIM:
+        if len(query_vector) != KDIGO_EMBED_DIM:
             raise RuntimeError(
-                f"쿼리 임베딩 차원 불일치: {len(query_vector)} != {EXPECTED_DIM}"
+                f"쿼리 임베딩 차원 불일치: {len(query_vector)} != {KDIGO_EMBED_DIM}"
             )
 
         # 2. pgvector 연산자를 활용한 벡터 검색
