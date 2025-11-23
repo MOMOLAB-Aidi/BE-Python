@@ -1,6 +1,5 @@
+from datetime import datetime
 from uuid import UUID
-
-from pydantic import BaseModel
 
 from app.models.record_schemas import ORMBase
 
@@ -27,3 +26,9 @@ class SessionEndRequest(ORMBase):
 class SessionEndResponse(ORMBase):
     session_id: str
     status: str
+
+
+class ConsultSessionSummary(ORMBase):
+    session_id: str
+    started_at: datetime        # 해당 세션의 첫 메시지 시각
+    message_count: int          # 총 메시지 개수

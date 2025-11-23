@@ -13,13 +13,14 @@ from datetime import date as _date, datetime, date
 from starlette.responses import JSONResponse, StreamingResponse
 
 from app.core.db import get_db
+from app.db_models import ConsultLog
 
 from app.db_models.record import Record
 from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
-    SessionEndRequest
+    SessionEndRequest, ConsultSessionSummary
 from app.models.record_schemas import WeeklyAverageResponse, WeeklyAverageData, RecordCommonCreate, RecordCommonPatch, \
     RecordExchangeCreateList, RecordExchangeUpdateList
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session
@@ -476,3 +477,38 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
     else:
         # 종료할 세션이 메모리에 없거나 user_id가 소유자와 불일치할 경우 404 에러
         raise HTTPException(status_code=404, detail="종료할 활성화된 세션을 찾을 수 없습니다.")
+
+
+@router.get(
+    "/api/v1/consult/history",
+    tags=["에이전트 상담"],
+    summary="전체 상담 기록 목록 조회",
+    description="세션별 상담 이력을 하나씩 묶어 전체 상담 기록 목록을 조회합니다.",
+    response_model=list[ConsultSessionSummary],
+)
+def get_consult_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
+):
+
+    rows = (
+        db.query(
+            ConsultLog.session_id.label("session_id"),
+            func.min(ConsultLog.created_at).label("started_at"),
+            func.count(ConsultLog.id).label("message_count"),
+        )
+        .filter(ConsultLog.user_id == current_user.id)
+        .group_by(ConsultLog.session_id)
+        .order_by(func.max(ConsultLog.created_at).desc())  # 최근 상담 먼저
+        .all()
+    )
+
+    # SQLAlchemy Row → Pydantic 모델로 변환
+    return [
+        ConsultSessionSummary(
+            session_id=row.session_id,
+            started_at=row.started_at,
+            message_count=row.message_count,
+        )
+        for row in rows
+    ]
