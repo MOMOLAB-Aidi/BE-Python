@@ -1,15 +1,14 @@
 import logging
-import math
 from typing import Dict, Any, Generator
 
 from google import genai
 from google.genai import types
-from sqlalchemy import desc
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db_models import Record
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
-from app.db_models.kdigo_chunk import KdigoChunk
+from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
 
 # 메모리 내 임시 세션 저장소: {session_id: chat_session_object}
 # 서버가 실행되는 동안 대화 이력을 임시로 저장
@@ -214,56 +213,33 @@ def refine_query(db: Session, session_id: str, current_query: str) -> str:
         return current_query  # 실패 시 원본 쿼리 반환
 
 
-# 두 벡터(list[float])의 코사인 유사도 계산
-def cosine_similarity(a, b) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-
-    return dot / norm_a / norm_b
-
-
 # 정제된 쿼리를 임베딩하여 벡터 DB에서 가장 관련성 높은 KDIGO 청크를 검색
 def kdigo_vector_search(refined_query: str, db: Session) -> str:
     if not client:
         return "KDIGO 검색 서비스가 초기화되지 않았습니다."
 
     try:
-        # 1. 정제된 쿼리를 벡터로 임베딩 (gemini 임베딩 모델 사용)
+        # 1. 정제된 쿼리를 벡터로 임베딩
         resp = client.models.embed_content(
-            model="gemini-embedding-001",  # kdigo_preprocess와 동일
+            model="text-embedding-004",
             contents=[refined_query],  # batched input
         )
         query_vector = resp.embeddings[0].values  # 쿼리 벡터 (리스트 형태)
 
-        # 2. DB에서 KDIGO 청크 + 임베딩 전부 가져오기
-        chunks = db.query(KdigoChunk).all()
+        if len(query_vector) != KDIGO_EMBED_DIM:
+            raise RuntimeError(
+                f"쿼리 임베딩 차원 불일치: {len(query_vector)} != {KDIGO_EMBED_DIM}"
+            )
 
-        scored = []
-        for c in chunks:
-            if not c.embedding:
-                continue
-            score = cosine_similarity(query_vector, c.embedding)
-            scored.append((score, c.content))
-
-        # 3. 유사도 기준으로 정렬 (내림차순: 높을수록 유사)
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        # 4. Top-k + threshold 적용
+        # 2. pgvector 연산자를 활용한 벡터 검색
         TOP_K = 5
-        THRESHOLD = 0.3
+        stmt = (
+            select(KdigoChunk.content)
+            .order_by(KdigoChunk.embedding.cosine_distance(query_vector))
+            .limit(TOP_K)
+        )
 
-        top_contents = [
-            content
-            for score, content in scored
-            if score >= THRESHOLD
-        ][:TOP_K]
+        top_contents = db.execute(stmt).scalars().all()
 
         if not top_contents:
             return "KDIGO 가이드라인에서 해당 질문과 관련된 구체적인 지침을 찾지 못했습니다."
