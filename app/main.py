@@ -6,7 +6,7 @@ from starlette.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.core.db import Base, get_engine, shutdown_db
+from app.core.db import Base, get_engine, shutdown_db, init_pgvector_extension
 from app.api.routes import router as api_router
 
 import uvicorn
@@ -30,6 +30,8 @@ async def lifespan(app: FastAPI):
 
     # 앱 시작 시 테이블 생성
     engine = get_engine()
+
+    init_pgvector_extension()
     Base.metadata.create_all(bind=engine)
 
     try:

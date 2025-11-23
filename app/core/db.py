@@ -6,7 +6,7 @@ from typing import Optional, Tuple, TYPE_CHECKING
 
 import sqlalchemy
 from fastapi import FastAPI
-from sqlalchemy import Column, DateTime, func, Engine, URL
+from sqlalchemy import Column, DateTime, func, Engine, URL, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -128,6 +128,14 @@ def get_engine() -> Engine:
     if _engine is None:
         raise RuntimeError("데이터베이스 엔진 초기화 실패")
     return _engine
+
+
+def init_pgvector_extension():
+    engine = get_engine()
+    if engine.dialect.name == "postgresql":
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.commit()
 
 
 # 요청 단위 세션

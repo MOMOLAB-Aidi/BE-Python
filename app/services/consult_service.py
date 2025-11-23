@@ -214,21 +214,6 @@ def refine_query(db: Session, session_id: str, current_query: str) -> str:
         return current_query  # 실패 시 원본 쿼리 반환
 
 
-# 두 벡터(list[float])의 코사인 유사도 계산
-def cosine_similarity(a, b) -> float:
-    if not a or not b or len(a) != len(b):
-        return 0.0
-
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-
-    return dot / norm_a / norm_b
-
-
 # 정제된 쿼리를 임베딩하여 벡터 DB에서 가장 관련성 높은 KDIGO 청크를 검색
 def kdigo_vector_search(refined_query: str, db: Session) -> str:
     if not client:
@@ -241,6 +226,12 @@ def kdigo_vector_search(refined_query: str, db: Session) -> str:
             contents=[refined_query],  # batched input
         )
         query_vector = resp.embeddings[0].values  # 쿼리 벡터 (리스트 형태)
+
+        EXPECTED_DIM = 768 # KDIGO_EMBED_DIM과 일치해야 함
+        if len(query_vector) != EXPECTED_DIM:
+            raise RuntimeError(
+                f"쿼리 임베딩 차원 불일치: {len(query_vector)} != {EXPECTED_DIM}"
+            )
 
         # 2. pgvector 연산자를 활용한 벡터 검색
         TOP_K = 5
