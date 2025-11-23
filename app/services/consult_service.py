@@ -297,6 +297,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
     # DB 트랜잭션 시작 (로그 저장을 위해 사용)
     full_response_text = ""
     agent_log = None
+    streaming_completed = False
 
     # 정상 종료 -> agent_log.content = full_response_text
     # 중간에 끊김 -> finally에서 "[스트리밍 중단 - 부분 응답]"이라도 채워서 저장
@@ -323,8 +324,6 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             content=message
         )
         db.add(user_log)
-        db.commit()
-
         agent_log = ConsultLog(
             user_id=user_id,
             session_id=session_id,
@@ -332,7 +331,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             content=""  # 비어있는 상태로 생성(스트리밍 도중 클라이언트가 끊겨도 최소한 "이 턴에 응답을 시도했다"는 행 남기기)
         )
         db.add(agent_log)
-        db.commit()
+        db.commit() # 스트리밍 완료 후 한 번에 커밋
 
         # 4. 스트리밍 시작
         stream = chat.send_message_stream(full_message)
@@ -346,19 +345,19 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             full_response_text += chunk_text
             yield chunk_text  # 실시간 응답 전송
 
-        # 스트리밍이 정상 종료된 경우에만 content 업데이트
-        agent_log.content = full_response_text
-        db.commit()
+        streaming_completed = True
 
     except Exception as e:
         db.rollback()
         logger.error(f"[{session_id}] 메시지 처리 중 오류 발생: {e}", exc_info=True)
         yield "메시지 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
     finally:
-        # 스트림이 중간에 끊겨도 최소한 저장은 되도록 보장
         if agent_log:
             try:
-                agent_log.content = full_response_text or "[스트리밍 중단 — 부분 응답]"
+                if streaming_completed:
+                    agent_log.content = full_response_text
+                else:
+                    agent_log.content = full_response_text if full_response_text else "[스트리밍 중단 — 부분 응답]"
                 db.commit()
             except Exception as e:
                 logger.error(f"[{session_id}] agent_log 저장 실패: {e}", exc_info=True)
