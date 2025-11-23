@@ -516,12 +516,28 @@ def get_consult_history_detail_routes(
     db: Session = Depends(get_db),
     current_user: User = Depends(AuthTokenDep),
 ):
-    logs = get_consult_history_detail(db, current_user.id, session_id)
+    try:
+        logs = get_consult_history_detail(db, current_user.id, session_id)
 
-    if not logs:
+        if not logs:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="해당 상담 기록을 찾을 수 없습니다.",
+            )
+
+        return [
+            ConsultMessage(
+                role=log.role,
+                content=log.content,
+                created_at=log.created_at,
+            )
+            for log in logs
+        ]
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.exception("상담 기록 상세 조회 중 DB 오류 발생")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="해당 상담 기록을 찾을 수 없습니다.",
-        )
-
-    return [ConsultMessage(**log.__dict__) for log in logs]
+            status_code=500,
+            detail="상담 기록 조회 중 서버 오류가 발생했습니다.",
+        ) from e
