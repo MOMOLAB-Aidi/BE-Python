@@ -169,6 +169,7 @@ def db_session() -> Generator[Session, None, None]:
 async def lifespan(app: FastAPI):
     # Startup: yield 이전에 실행
     init_db_if_needed()
+    init_pgvector_extension()
     yield
     # Shutdown: yield 이후에 실행
     shutdown_db()
