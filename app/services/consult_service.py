@@ -72,23 +72,24 @@ def start_new_session(user_id: int, session_id: str) -> bool:
         if session_id in active_sessions:
             return active_sessions[session_id]["user_id"] == user_id
 
-        try:
-            config = types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT
-            )
+        else:
+            try:
+                config = types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT
+                )
 
-            chat = client.chats.create(
-                model="gemini-2.5-flash",
-                config=config
-            )
-            active_sessions[session_id] = {
-                "user_id": user_id,
-                "chat": chat,
-            }
-            return True
-        except Exception as e:
-            logger.error(f"[{session_id}] 새로운 대화 시작 실패: {e}", exc_info=True)
-            return False
+                chat = client.chats.create(
+                    model="gemini-2.5-flash",
+                    config=config
+                )
+                active_sessions[session_id] = {
+                    "user_id": user_id,
+                    "chat": chat,
+                }
+                return True
+            except Exception as e:
+                logger.error(f"[{session_id}] 새로운 대화 시작 실패: {e}", exc_info=True)
+                return False
 
 
 # 특정 세션 ID의 활성화 상태를 확인
