@@ -516,16 +516,11 @@ def get_consult_history_detail_routes(
             detail="해당 상담 기록을 찾을 수 없습니다.",
         )
 
-    result: list[ConsultMessage] = []
-    for log in logs:
-        role_value = log.role.value if hasattr(log.role, "value") else log.role
-
-        result.append(
-            ConsultMessage(
-                role=role_value,
-                content=log.content,
-                created_at=log.created_at,
-            )
+    return [
+        ConsultMessage(
+            role=log.role.value if hasattr(log.role, "value") else log.role,
+            content=log.content,
+            created_at=log.created_at,
         )
-
-    return result
+        for log in logs
+    ]

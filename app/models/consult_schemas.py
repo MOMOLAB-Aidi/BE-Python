@@ -1,13 +1,12 @@
 from datetime import datetime
 from typing import Literal
-from uuid import UUID
 
 from app.models.record_schemas import ORMBase
 
 
 # 환영 메시지
 class SessionStartResponse(ORMBase):
-    session_id: UUID
+    session_id: str
     message: str
 
 
