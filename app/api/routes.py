@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 from datetime import date as _date, datetime, date
 
-from starlette.responses import JSONResponse, StreamingResponse
+from starlette.responses import StreamingResponse
 
 from app.core.db import get_db
 
@@ -19,10 +19,11 @@ from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
-    SessionEndRequest
+    SessionEndRequest, ConsultSessionSummary, ConsultMessage
 from app.models.record_schemas import WeeklyAverageResponse, WeeklyAverageData, RecordCommonCreate, RecordCommonPatch, \
     RecordExchangeCreateList, RecordExchangeUpdateList
-from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session
+from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
+    get_consult_history, get_consult_history_detail
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
     download_from_gcs
 from app.services.record_service import get_weekly_average_records, create_record_common, rec_to_dict, \
@@ -476,3 +477,67 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
     else:
         # 종료할 세션이 메모리에 없거나 user_id가 소유자와 불일치할 경우 404 에러
         raise HTTPException(status_code=404, detail="종료할 활성화된 세션을 찾을 수 없습니다.")
+
+
+@router.get(
+    "/api/v1/consult/history",
+    tags=["에이전트 상담"],
+    summary="전체 상담 기록 목록 조회",
+    description="세션별 상담 이력을 하나씩 묶어 전체 상담 기록 목록을 조회합니다.",
+    response_model=list[ConsultSessionSummary],
+)
+def get_consult_history_routes(
+    skip: int = Query(0, ge=0, description="건너뛸 레코드 수"),
+    limit: int = Query(50, ge=1, le=100, description="조회할 최대 레코드 수"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
+):
+    try:
+        summaries_dict = get_consult_history(db, current_user.id, skip=skip, limit=limit)
+        # dict → Pydantic 모델로 변환
+        return [ConsultSessionSummary(**s) for s in summaries_dict]
+    except SQLAlchemyError as e:
+        logger.exception("상담 기록 조회 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="상담 기록 조회 중 서버 오류가 발생했습니다.",
+        ) from e
+
+
+@router.get(
+    "/api/v1/consult/history/{session_id}",
+    tags=["에이전트 상담"],
+    summary="특정 상담 세션 상세 조회",
+    description="특정 세션에 대해 상담 로그를 시간순으로 조회합니다.",
+    response_model=list[ConsultMessage],
+)
+def get_consult_history_detail_routes(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
+):
+    try:
+        logs = get_consult_history_detail(db, current_user.id, session_id)
+
+        if not logs:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="해당 상담 기록을 찾을 수 없습니다.",
+            )
+
+        return [
+            ConsultMessage(
+                role=log.role,
+                content=log.content,
+                created_at=log.created_at,
+            )
+            for log in logs
+        ]
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.exception("상담 기록 상세 조회 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="상담 기록 조회 중 서버 오류가 발생했습니다.",
+        ) from e
