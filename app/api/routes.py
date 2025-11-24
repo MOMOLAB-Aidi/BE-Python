@@ -415,7 +415,7 @@ def delete_record_route(
         ) from e
 
 
-@router.post("/api/v1/consult/start",
+@router.post("/api/v1/consults/start",
      tags=["에이전트 상담"],
      summary="새로운 복막투석 상담 시작",
      description="새로운 복막투석 상담 세션을 시작하고 고유한 세션 ID를 발급합니다.",
@@ -436,7 +436,7 @@ def start_chat_session(current_user: User = Depends(AuthTokenDep)):
         raise HTTPException(status_code=500, detail="상담 에이전트 서비스 초기화에 실패했습니다. 서버 로그를 확인해주세요.")
 
 
-@router.post("/api/v1/consult/chat",
+@router.post("/api/v1/consults/chat",
      tags=["에이전트 상담"],
      summary="에이전트 대화",
      description="세션 ID를 사용하여 에이전트와 대화를 나눕니다. 응답은 text/plain 형식의 스트리밍으로 실시간 전달됩니다."
@@ -462,7 +462,7 @@ def send_chat_message(request: ChatRequest, db: Session = Depends(get_db), curre
         media_type="text/plain; charset=utf-8",
     )
 
-@router.post("/api/v1/consult/end",
+@router.post("/api/v1/consults/end",
      tags=["에이전트 상담"],
      summary="상담 종료",
      description="활성화된 세션을 종료하고 메모리에서 제거합니다.",
@@ -482,7 +482,7 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
 
 
 @router.get(
-    "/api/v1/consult/history",
+    "/api/v1/consults/history",
     tags=["에이전트 상담"],
     summary="전체 상담 기록 목록 조회",
     description="세션별 상담 이력을 하나씩 묶어 전체 상담 기록 목록을 조회합니다.",
@@ -507,7 +507,7 @@ def get_consult_history_routes(
 
 
 @router.get(
-    "/api/v1/consult/history/{session_id}",
+    "/api/v1/consults/history/{session_id}",
     tags=["에이전트 상담"],
     summary="특정 상담 세션 상세 조회",
     description="특정 세션에 대해 상담 로그를 시간순으로 조회합니다.",
