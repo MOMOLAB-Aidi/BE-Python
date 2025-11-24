@@ -22,12 +22,14 @@ from app.models.consult_schemas import SessionStartResponse, ChatRequest, Sessio
     SessionEndRequest, ConsultSessionSummary, ConsultMessage
 from app.models.record_schemas import WeeklyAverageResponse, WeeklyAverageData, RecordCommonCreate, RecordCommonPatch, \
     RecordExchangeCreateList, RecordExchangeUpdateList
+from app.models.stats_schemas import WeightUfPoint
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
     get_consult_history, get_consult_history_detail
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
     download_from_gcs
 from app.services.record_service import get_weekly_average_records, create_record_common, rec_to_dict, \
     get_latest_records, apply_record_patch, create_exchanges_list, patch_exchanges_list, delete_record
+from app.services.stats_service import get_weight_uf_last_7_days
 
 router = APIRouter()
 
@@ -541,3 +543,27 @@ def get_consult_history_detail_routes(
             status_code=500,
             detail="상담 기록 조회 중 서버 오류가 발생했습니다.",
         ) from e
+
+
+@router.get(
+    "/api/v1/stats/weight-uf-trend",
+    tags=["통계"],
+    summary="최근 7일간 체중 및 일별 제수량 추이 조회",
+    description=(
+        "최근 7일 동안의 체중과 제수량 추이를 반환합니다."
+        "날짜별 기록이 없는 경우 해당 일자는 weight/total_uf가 null로 반환됩니다."
+    ),
+    response_model=List[WeightUfPoint],
+)
+def get_weight_uf_trend(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
+):
+    try:
+        points = get_weight_uf_last_7_days(db, current_user.id)
+        return points
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="최근 7일 체중/제수량 통계를 조회하는 중 오류가 발생했습니다.",
+        )
