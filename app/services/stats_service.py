@@ -50,7 +50,7 @@ def get_weight_uf_last_7_days(
 
         result.append(
             WeightUfPoint(
-                date=d,
+                record_date=d,
                 weight=weight,
                 total_uf=total_uf,
             )
