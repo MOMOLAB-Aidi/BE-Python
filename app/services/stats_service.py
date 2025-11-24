@@ -42,7 +42,7 @@ def get_weight_uf_last_7_days(
         rec = record_by_date.get(d)
 
         if rec is not None:
-            weight = float(rec.weight) if rec.weight is not None else None
+            weight = rec.weight if rec.weight is not None else None
             total_uf = rec.total_uf if rec.total_uf is not None else None
         else:
             weight = None

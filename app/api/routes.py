@@ -562,8 +562,9 @@ def get_weight_uf_trend(
     try:
         points = get_weight_uf_last_7_days(db, current_user.id)
         return points
-    except SQLAlchemyError:
+    except SQLAlchemyError as e:
+        logger.exception("최근 7일 체중/제수량 통계 조회 중 DB 오류 발생")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="최근 7일 체중/제수량 통계를 조회하는 중 오류가 발생했습니다.",
-        )
+        ) from e
