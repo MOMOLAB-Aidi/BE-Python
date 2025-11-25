@@ -320,26 +320,6 @@ def get_weekly_average_records(
     return avg_data, start_date, end_date
 
 
-# 제수량 검증
-def _validate_uf_consistency(rec: Record):
-    if not rec.exchanges:
-        vrng(False, "회차 정보가 최소 1개 이상 필요합니다.")
-
-    for e in rec.exchanges:
-        expected_uf = e.drain_volume - e.fill_volume
-        vrng(
-            e.uf == expected_uf,
-            f"{e.exchange_no}회차 제수량이 '배액량 - 주입액 중량'과 일치하지 않습니다."
-        )
-
-    vrng(rec.total_uf is not None, "제수량 합계(total_uf)가 입력되어야 합니다.")
-    sum_uf = sum(e.uf for e in rec.exchanges)
-    vrng(
-        sum_uf == rec.total_uf,
-        "모든 회차 제수량의 합과 제수량 합계(total_uf)가 일치하지 않습니다."
-    )
-
-
 # 공통 정보 + 회차별 정보 한 번에 생성
 def create_record_with_exchanges(
     db: Session,
@@ -398,8 +378,6 @@ def create_record_with_exchanges(
         sum_uf == rec.total_uf,
         "모든 회차 제수량의 합과 제수량 합계가 일치하지 않습니다."
     )
-
-    _validate_uf_consistency(rec)
 
     db.add(rec)
     db.commit()
@@ -476,8 +454,6 @@ def update_record_with_exchanges(
                 )
 
             _apply_exchange_fields(target, update_data)
-
-    _validate_uf_consistency(rec)
 
     db.add(rec)
     db.commit()
