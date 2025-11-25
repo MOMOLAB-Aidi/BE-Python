@@ -20,24 +20,21 @@ from app.db_models.user import User
 from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
     SessionEndRequest, ConsultSessionSummary, ConsultMessage
-from app.models.record_schemas import WeeklyAverageResponse, WeeklyAverageData, RecordCommonCreate, RecordCommonPatch, \
-    RecordExchangeCreateList, RecordExchangeUpdateList
+from app.models.record_schemas import WeeklyAverageResponse, WeeklyAverageData, RecordCommonPatch, \
+    RecordExchangeUpdateList, RecordCreate
 from app.models.stats_schemas import WeightUfPoint
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
     get_consult_history, get_consult_history_detail
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
     download_from_gcs
-from app.services.record_service import get_weekly_average_records, create_record_common, rec_to_dict, \
-    get_latest_records, apply_record_patch, create_exchanges_list, patch_exchanges_list, delete_record
+from app.services.record_service import get_weekly_average_records, rec_to_dict, \
+    get_latest_records, apply_record_patch, patch_exchanges_list, delete_record, \
+    create_record_with_exchanges
 from app.services.stats_service import get_weight_uf_last_7_days
 
 router = APIRouter()
 
 logger = logging.getLogger(__name__)
-
-
-class RecordCreateResponse(BaseModel):
-    id: int
 
 
 @router.get("/api/v1/records/weekly-average",
@@ -69,24 +66,22 @@ def get_weekly_average(
         raise HTTPException(status_code=500, detail="주간 평균 계산 중 서버 오류가 발생했습니다.") from e
 
 
-# 복막투석기록 공통 정보 생성 api
 @router.post(
     "/api/v1/records",
-    tags=["복막투석기록-공통"],
-    summary="공통 정보 생성",
-    description="회차 없이 공통 정보만 생성합니다. 같은 날짜가 이미 있으면 409를 반환합니다.",
+    tags=["복막투석기록"],
+    summary="기록 생성",
+    description="복막투석 기록의 공통 정보와 회차별 정보를 한 번에 생성합니다.",
     status_code=status.HTTP_201_CREATED,
-    response_model=RecordCreateResponse,
 )
-def create_record_common_route(
-        payload: RecordCommonCreate,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
+def create_record_route(
+    payload: RecordCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
 ):
     p = payload.model_dump(exclude_unset=True)
     try:
-        rec = create_record_common(db, p, user_id=current_user.id, unique_by_date=True)
-        return RecordCreateResponse(id=rec.id)
+        create_record_with_exchanges(db,p,user_id=current_user.id,unique_by_date=True)
+        return Response(status_code=status.HTTP_201_CREATED)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="이미 해당 날짜에 기록이 존재합니다.")
@@ -312,31 +307,6 @@ def patch_record_common(
     db.commit()
     db.refresh(rec)
     return Response(status_code=204)
-
-
-MAX_EXCHANGES = 5
-
-# 복막투석기록 회차 정보 생성 api
-@router.post(
-    "/api/v1/records/{rec_id}/exchanges",
-    tags=["복막투석기록-회차"],
-    summary="회차 정보 생성",
-    description="특정 기록에 회차 정보를 생성합니다. 최대 5개까지 작성할 수 있습니다.",
-    status_code=204,
-    responses={204: {"description": "성공입니다"}},
-)
-def create_record_exchange(
-        rec_id: int,
-        payload: RecordExchangeCreateList,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(AuthTokenDep)
-):
-    exchange_list = [ex.model_dump(exclude_unset=True) for ex in payload.exchanges]
-    create_exchanges_list(db, rec_id, exchange_list, user_id=current_user.id)
-
-    db.commit()
-    return Response(status_code=204)
-
 
 # 복막투석기록 회차 정보 수정 api
 @router.patch(

@@ -128,26 +128,6 @@ def create_record_common_obj(p: Dict[str, Any], user_id: int) -> Record:
     return rec
 
 
-# 공통 정보 생성
-def create_record_common(db: Session, p: Dict[str, Any], user_id: int, *, unique_by_date: bool = True) -> Record:
-    rec = create_record_common_obj(p, user_id)
-
-    if unique_by_date:
-        existing = (
-            db.query(Record)
-            .filter(Record.record_date == rec.record_date, Record.user_id==user_id)
-            .one_or_none()
-        )
-        if existing:
-            raise HTTPException(status_code=409, detail=f"{rec.record_date.isoformat()} 기록이 이미 존재합니다.")
-
-    db.add(rec)
-    db.flush()
-    db.commit()
-    db.refresh(rec)
-    return rec
-
-
 # 공통 정보 수정
 def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_ownership: bool = True) -> None:
 
@@ -195,16 +175,6 @@ def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_owner
     if "total_uf" in p and p["total_uf"] is not None:
         rec.total_uf = _as_int_in(p["total_uf"], -5000, 5000, "제수량 합계")
 
-
-# =========================
-# 회차 공통 처리
-# =========================
-def _require_exchange_no(p: Dict[str, Any]) -> int:
-    vrng("exchange_no" in p and p["exchange_no"] is not None, "회차(개별)에는 exchange_no가 필요합니다.")
-    ex_no = int(p["exchange_no"])
-    vrng(1 <= ex_no <= 5, "회차는 1~5 범위")
-    return ex_no
-
 def _apply_exchange_fields(target: RecordExchange, p: Dict[str, Any]) -> None:
     _apply_if_present(target, p, "exchange_time", lambda v: parse_time(v))
     _apply_if_present(target, p, "drain_volume", lambda v: _as_int_in(v, 0, 6000, "배액량"))
@@ -234,59 +204,6 @@ def get_latest_records(db: Session, user_id: int) -> List[Record]:
     )
 
     return records
-
-
-# 회차 정보 리스트 생성
-def create_exchanges_list(
-        db: Session,
-        rec_id: int,
-        exchange_list: List[Dict[str, Any]],
-        user_id: int
-) -> Record:
-    rec = (
-        db.query(Record)
-        .options(joinedload(Record.exchanges))
-        .filter(Record.id == rec_id)
-        .first()
-    )
-
-    if not rec:
-        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
-
-    # 소유권 검증
-    if rec.user_id != user_id:
-        raise HTTPException(status_code=403, detail="기록에 회차를 생성할 권한이 없습니다.")
-
-    # 일괄 생성 로직
-    current_exchange_count = len(rec.exchanges or [])
-    new_exchange_count = len(exchange_list)
-    total_count = current_exchange_count + new_exchange_count
-
-    # 최대 개수 검증
-    vrng(total_count <= 5, "기록 하나당 최대 5개의 회차만 생성할 수 있습니다.")
-
-    for exchange_data in exchange_list:
-
-        # 다음 회차 번호를 계산하고 할당
-        ex_no = _next_exchange_no(rec)
-
-        # 회차 번호가 이미 존재하는지 다시 검사
-        if find_exchange(rec, ex_no) is not None:
-            raise HTTPException(status_code=409, detail="회차 번호 충돌 발생")
-
-        target = RecordExchange(exchange_no=ex_no, user_id=rec.user_id)
-
-        # 필드 적용 시 시간 파싱 및 범위 검증 수행
-        _apply_exchange_fields(target, exchange_data)
-
-        # 목록에 추가
-        rec.exchanges = (rec.exchanges or [])
-        rec.exchanges.append(target)
-
-    db.add(rec)
-    db.flush()
-    return rec
-
 
 # 회차 정보 리스트 수정
 def patch_exchanges_list(
@@ -401,3 +318,68 @@ def get_weekly_average_records(
         }
 
     return avg_data, start_date, end_date
+
+
+# 공통 정보 + 회차별 정보 한 번에 생성
+def create_record_with_exchanges(
+    db: Session,
+    p: Dict[str, Any],
+    user_id: int,
+    *,
+    unique_by_date: bool = True,
+) -> Record:
+
+    exchanges_payload: List[Dict[str, Any]] = p.get("exchanges") or []
+    vrng(1 <= len(exchanges_payload) <= 5, "회차는 1~5개까지 입력할 수 있습니다.")
+
+    # exchanges 키는 제거하고 공통 정보만 객체 생성에 사용
+    common_payload = {k: v for k, v in p.items() if k != "exchanges"}
+
+    # Record 객체 생성 (아직 commit X)
+    rec = create_record_common_obj(common_payload, user_id=user_id)
+
+    # 같은 날짜 중복 체크
+    if unique_by_date:
+        existing = (
+            db.query(Record)
+            .filter(Record.record_date == rec.record_date, Record.user_id == user_id)
+            .one_or_none()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{rec.record_date.isoformat()} 기록이 이미 존재합니다."
+            )
+
+    # 회차 객체들 생성 + 필드 적용
+    rec.exchanges = rec.exchanges or []
+
+    if len(exchanges_payload) > 5:
+        raise HTTPException(status_code=400, detail="기록 하나당 최대 5개의 회차만 생성할 수 있습니다.")
+
+    for idx, exchange_data in enumerate(exchanges_payload, start=1):
+        # 새 기록이므로 1부터 순서대로 회차 번호 부여
+        target = RecordExchange(
+            exchange_no=idx,
+            user_id=user_id,
+        )
+        _apply_exchange_fields(target, exchange_data)
+        rec.exchanges.append(target)
+
+    for e in rec.exchanges:
+        expected_uf = e.drain_volume - e.fill_volume
+        vrng(
+            e.uf == expected_uf,
+            f"{e.exchange_no}회차 제수량이 '배액량 - 주입액 중량'과 일치하지 않습니다."
+        )
+
+    sum_uf = sum(e.uf for e in rec.exchanges)
+    vrng(
+        sum_uf == rec.total_uf,
+        "모든 회차 제수량의 합과 제수량 합계가 일치하지 않습니다."
+    )
+
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
