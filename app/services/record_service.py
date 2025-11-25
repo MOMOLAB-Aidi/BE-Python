@@ -320,6 +320,26 @@ def get_weekly_average_records(
     return avg_data, start_date, end_date
 
 
+# 제수량 검증
+def _validate_uf_consistency(rec: Record):
+    if not rec.exchanges:
+        vrng(False, "회차 정보가 최소 1개 이상 필요합니다.")
+
+    for e in rec.exchanges:
+        expected_uf = e.drain_volume - e.fill_volume
+        vrng(
+            e.uf == expected_uf,
+            f"{e.exchange_no}회차 제수량이 '배액량 - 주입액 중량'과 일치하지 않습니다."
+        )
+
+    vrng(rec.total_uf is not None, "제수량 합계(total_uf)가 입력되어야 합니다.")
+    sum_uf = sum(e.uf for e in rec.exchanges)
+    vrng(
+        sum_uf == rec.total_uf,
+        "모든 회차 제수량의 합과 제수량 합계(total_uf)가 일치하지 않습니다."
+    )
+
+
 # 공통 정보 + 회차별 정보 한 번에 생성
 def create_record_with_exchanges(
     db: Session,
@@ -379,7 +399,91 @@ def create_record_with_exchanges(
         "모든 회차 제수량의 합과 제수량 합계가 일치하지 않습니다."
     )
 
+    _validate_uf_consistency(rec)
+
     db.add(rec)
     db.commit()
     db.refresh(rec)
     return rec
+
+
+# 공통 정보 + 회차별 정보 한 번에 수정
+def update_record_with_exchanges(
+    db: Session,
+    rec_id: int,
+    p: Dict[str, Any],
+    user_id: int,
+) -> Record:
+    rec: Optional[Record] = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))
+        .filter(Record.id == rec_id)
+        .first()
+    )
+
+    if not rec:
+        raise HTTPException(status_code=404, detail="복막투석기록을 찾을 수 없습니다.")
+
+    if rec.user_id != user_id:
+        raise HTTPException(status_code=403, detail="기록을 수정할 권한이 없습니다.")
+
+    # payload 분리
+    exchanges_payload: Optional[List[Dict[str, Any]]] = p.get("exchanges")
+    common_patch = {k: v for k, v in p.items() if k != "exchanges"}
+
+    # 날짜 변경 시 중복 검사
+    if "record_date" in common_patch and common_patch["record_date"] is not None:
+        new_date = common_patch["record_date"]
+        if isinstance(new_date, str):
+            new_date = _date.fromisoformat(new_date)
+
+        if new_date != rec.record_date:
+            exists = (
+                db.query(Record.id)
+                .filter(
+                    Record.record_date == new_date,
+                    Record.id != rec.id,
+                    Record.user_id == user_id,
+                )
+                .first()
+            )
+            if exists:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"{new_date.isoformat()} 기록이 이미 존재합니다."
+                )
+
+    if common_patch:
+        apply_record_patch(rec, common_patch, user_id=user_id, check_ownership=False)
+
+    # 회차 수정
+    if exchanges_payload is not None:
+        exchanges_map = {e.id: e for e in (rec.exchanges or [])}
+
+        for update_data in exchanges_payload:
+            exchange_id = update_data.get("id")
+            if exchange_id is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="회차 수정을 위해서는 'id'가 필수입니다."
+                )
+
+            target = exchanges_map.get(exchange_id)
+            if target is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"회차 ID {exchange_id}를 찾을 수 없습니다."
+                )
+
+            _apply_exchange_fields(target, update_data)
+
+    _validate_uf_consistency(rec)
+
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
+
+

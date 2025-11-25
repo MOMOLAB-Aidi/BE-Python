@@ -140,10 +140,38 @@ class RecordExchangePatch(ORMBase):
     uf: Optional[int] = Field(None, ge=-500, le=500)
 
 
-# 회차 정보 수정 요청 스키마 (리스트)
-class RecordExchangeUpdateList(ORMBase):
-    # 단일 API 요청에 포함될 회차 리스트
-    exchanges: List[RecordExchangePatch] = Field(..., description="수정할 회차 기록 리스트")
+# 공통 + 회차 정보 동시 수정 스키마
+class RecordPatch(RecordCommonPatch):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "record_date": "2025-11-24",
+                "weight": 56.2,
+                "turbidity": "있음",
+                "notes": "복막액이 약간 혼탁하지만 통증은 없음",
+                "total_uf": 550,
+                "exchanges": [
+                    {
+                        "id": 101,
+                        "exchange_time": "08:30",
+                        "drain_volume": 2150,
+                        "fill_volume": 2000,
+                        "fill_concentration": 1.5,
+                        "uf": 150
+                    },
+                    {
+                        "id": 102,
+                        "drain_volume": 2250,
+                        "uf": 250
+                    }
+                ]
+            }
+        }
+    )
+    exchanges: Optional[List[RecordExchangePatch]] = Field(
+        default=None,
+        description="수정할 회차 기록 리스트 (각 항목은 id 필수, 나머지는 부분 수정 가능)"
+    )
 
 
 class WeeklyAverageData(BaseModel):
