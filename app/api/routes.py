@@ -79,7 +79,7 @@ def create_record_route(
 ):
     p = payload.model_dump(exclude_unset=True)
     try:
-        create_record_with_exchanges(db,p,user_id=current_user.id,unique_by_date=True)
+        create_record_with_exchanges(db, p, user_id=current_user.id, unique_by_date=True)
         return Response(status_code=status.HTTP_201_CREATED)
     except IntegrityError:
         db.rollback()
@@ -274,8 +274,12 @@ def patch_record_route(
     current_user: User = Depends(AuthTokenDep),
 ):
     p = payload.model_dump(exclude_unset=True)
-    update_record_with_exchanges(db=db,rec_id=rec_id,p=p,user_id=current_user.id)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    try:
+        update_record_with_exchanges(db=db, rec_id=rec_id, p=p, user_id=current_user.id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="데이터 무결성 오류가 발생했습니다.")
 
 
 # 특정 복막투석기록 조회 api (공통 + 회차)

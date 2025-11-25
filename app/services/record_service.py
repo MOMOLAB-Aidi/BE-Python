@@ -354,9 +354,6 @@ def create_record_with_exchanges(
     # 회차 객체들 생성 + 필드 적용
     rec.exchanges = rec.exchanges or []
 
-    if len(exchanges_payload) > 5:
-        raise HTTPException(status_code=400, detail="기록 하나당 최대 5개의 회차만 생성할 수 있습니다.")
-
     for idx, exchange_data in enumerate(exchanges_payload, start=1):
         # 새 기록이므로 1부터 순서대로 회차 번호 부여
         target = RecordExchange(
@@ -365,19 +362,6 @@ def create_record_with_exchanges(
         )
         _apply_exchange_fields(target, exchange_data)
         rec.exchanges.append(target)
-
-    for e in rec.exchanges:
-        expected_uf = e.drain_volume - e.fill_volume
-        vrng(
-            e.uf == expected_uf,
-            f"{e.exchange_no}회차 제수량이 '배액량 - 주입액 중량'과 일치하지 않습니다."
-        )
-
-    sum_uf = sum(e.uf for e in rec.exchanges)
-    vrng(
-        sum_uf == rec.total_uf,
-        "모든 회차 제수량의 합과 제수량 합계가 일치하지 않습니다."
-    )
 
     db.add(rec)
     db.commit()

@@ -107,17 +107,17 @@ class RecordCreate(ORMBase):
         }
     )
     record_date: Optional[date] = Field(None, description="기록 날짜, 비워두면 오늘 날짜 사용")
-    record_dw: str = Field(..., description="요일: 월/화/수/목/금/토/일")
-    weight: float
-    systolic: int
-    diastolic: int
-    fasting_glucose: int
-    urine_count: int
-    turbidity: str = Field(..., description="'없음' 또는 '있음'")
+    record_dw: DayWeekKR = Field(..., description="요일: 월/화/수/목/금/토/일")
+    weight: float = Field(..., ge=20.0, le=300.0)
+    systolic: int = Field(..., ge=70, le=240)
+    diastolic: int = Field(..., ge=40, le=160)
+    fasting_glucose: int = Field(..., ge=40, le=600)
+    urine_count: int = Field(..., ge=0, le=50)
+    turbidity: Turbidity = Field(..., description="'없음' 또는 '있음'")
     notes: Optional[str] = None
     total_uf: int = Field(..., ge=-5000, le=5000, description="제수량 합계")
     gcs_path: Optional[str] = None
-    exchanges: List[RecordExchangeCreate]
+    exchanges: List[RecordExchangeCreate] = Field(..., min_length=1, max_length=5, description="회차별 정보 (1~5개)")
 
 
 # 회차 정보 수정 스키마
