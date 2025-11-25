@@ -279,7 +279,7 @@ def patch_record_route(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="데이터 무결성 오류가 발생했습니다.")
+        raise HTTPException(status_code=409, detail="데이터 무결성 오류가 발생했습니다.") from None
 
 
 # 특정 복막투석기록 조회 api (공통 + 회차)
