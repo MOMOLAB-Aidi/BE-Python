@@ -21,7 +21,7 @@ from app.models.consult_schemas import SessionStartResponse, ChatRequest, Sessio
     SessionEndRequest, ConsultSessionSummary, ConsultMessage
 from app.models.record_schemas import \
     RecordCreate, RecordPatch
-from app.models.stats_schemas import WeightUfPoint, WeeklyAverageResponse, WeeklyAverageData, Last7DaysStats
+from app.models.stats_schemas import WeeklyAverageResponse, WeeklyAverageData, LastWeekStats
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
     get_consult_history, get_consult_history_detail, delete_consult_session
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
@@ -503,7 +503,7 @@ def delete_consult_session_route(
 
 @router.get(
     "/api/v1/stats/week",
-    response_model=Last7DaysStats,
+    response_model=LastWeekStats,
     summary="최근 7일 체중/제수량 및 혈압 통계",
     description="최근 7일 동안의 체중과 제수량 추이, 혈압 통계를 반환합니다."
 )
