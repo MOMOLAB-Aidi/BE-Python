@@ -5,6 +5,7 @@ from typing import Dict, Any, Generator
 from google import genai
 from google.genai import types
 from sqlalchemy import desc, select, func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.db_models import Record
@@ -437,3 +438,35 @@ def get_consult_history_detail(
         .all()
     )
     return logs
+
+
+# 특정 세션 상담 기록 삭제
+def delete_consult_session(
+    db: Session,
+    user_id: int,
+    session_id: str,
+) -> int:
+    # 1. 존재 여부 확인
+    exists = (
+        db.query(ConsultLog)
+        .filter(
+            ConsultLog.user_id == user_id,
+            ConsultLog.session_id == session_id,
+        )
+        .first()
+    )
+
+    if not exists:
+        return 0
+
+    # 2. 있으면 삭제
+    deleted_count = (
+        db.query(ConsultLog)
+        .filter(
+            ConsultLog.user_id == user_id,
+            ConsultLog.session_id == session_id,
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return deleted_count
