@@ -1,6 +1,8 @@
 from datetime import datetime
 from enum import Enum
 
+from pydantic import Field
+
 from app.models.record_schemas import ORMBase
 
 class MessageRole(str, Enum):
@@ -33,8 +35,9 @@ class SessionEndResponse(ORMBase):
 
 class ConsultSessionSummary(ORMBase):
     session_id: str
-    started_at: datetime        # 해당 세션의 첫 메시지 시각
-    message_count: int          # 총 메시지 개수
+    started_at: datetime = Field(..., description="해당 세션의 첫 메시지 시각")
+    message_count: int = Field(..., description="총 메시지 개수")
+    first_user_question: str = Field(..., description="환자의 첫 질문")
 
 class ConsultMessage(ORMBase):
     role: MessageRole

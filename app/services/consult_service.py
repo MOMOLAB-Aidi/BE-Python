@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db_models import Record
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
 from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
-
+from app.models.consult_schemas import MessageRole
 
 session_lock = threading.RLock()
 
@@ -393,15 +393,33 @@ def get_consult_history(db: Session, user_id: int, skip: int = 0, limit: int = 5
         .all()
     )
 
-    # 라우터에서 Pydantic으로 감싸기 편하게 dict 리스트로 변환
-    return [
-        {
-            "session_id": r.session_id,
-            "started_at": r.started_at,
-            "message_count": r.message_count,
-        }
-        for r in rows
-    ]
+    result: list[dict] = []
+
+    for r in rows:
+        # 각 세션에서 환자의 첫 질문 메시지 하나 조회
+        first_user = (
+            db.query(ConsultLog.content)
+            .filter(
+                ConsultLog.user_id == user_id,
+                ConsultLog.session_id == r.session_id,
+                ConsultLog.role == MessageRole.USER,
+            )
+            .order_by(ConsultLog.created_at.asc())
+            .first()
+        )
+
+        first_user_question = first_user[0] if first_user is not None else None
+
+        result.append(
+            {
+                "session_id": r.session_id,
+                "started_at": r.started_at,
+                "message_count": r.message_count,
+                "first_user_question": first_user_question,
+            }
+        )
+
+    return result
 
 # 특정 환자의 특정 세션에 대한 USER/AGENT 대화 로그 전체를 시간순으로 조회
 def get_consult_history_detail(
