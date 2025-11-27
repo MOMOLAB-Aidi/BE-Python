@@ -49,6 +49,6 @@ class BloodPressureSummary(ORMBase):
     min_systolic: int = Field(None, description="최근 7일간 기록된 최고 혈압 중 가장 낮은 값")
     min_diastolic: int = Field(None, description="최근 7일간 기록된 최저 혈압 중 가장 낮은 값")
 
-class LastWeekStats(ORMBase):
+class Last7DaysStats(ORMBase):
     points: List[WeightUfPoint]
     bp_summary: BloodPressureSummary
