@@ -172,33 +172,3 @@ class RecordPatch(RecordCommonPatch):
         default=None,
         description="수정할 회차 기록 리스트 (각 항목은 id 필수, 나머지는 부분 수정 가능)"
     )
-
-
-class WeeklyAverageData(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "weight_avg": 62.5,
-                "total_uf_avg": 600
-            }
-        }
-    )
-    weight_avg: Optional[float] = Field(None, description="주간 평균 체중")
-    total_uf_avg: Optional[float] = Field(None, description="주간 평균 제수량 합계")
-
-class WeeklyAverageResponse(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "start_date": "2025-11-17",
-                "end_date": "2025-11-23",
-                "data": {
-                    "weight_avg": 62.5,
-                    "total_uf_avg": 600
-                }
-            }
-        }
-    )
-    start_date: date = Field(..., description="주간 시작일 (월요일)")
-    end_date: date = Field(..., description="주간 종료일 (일요일)")
-    data: WeeklyAverageData = Field(..., description="주간 기록 데이터 평균 값")

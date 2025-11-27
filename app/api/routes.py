@@ -19,9 +19,9 @@ from app.db_models.user import User
 from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
     SessionEndRequest, ConsultSessionSummary, ConsultMessage
-from app.models.record_schemas import WeeklyAverageResponse, WeeklyAverageData, \
+from app.models.record_schemas import \
     RecordCreate, RecordPatch
-from app.models.stats_schemas import WeightUfPoint
+from app.models.stats_schemas import WeightUfPoint, WeeklyAverageResponse, WeeklyAverageData, Last7DaysStats
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
     get_consult_history, get_consult_history_detail, delete_consult_session
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
@@ -502,25 +502,13 @@ def delete_consult_session_route(
 
 
 @router.get(
-    "/api/v1/stats/weight-uf-trend",
-    tags=["통계"],
-    summary="최근 7일간 체중 및 일별 제수량 추이 조회",
-    description=(
-        "최근 7일 동안의 체중과 제수량 추이를 반환합니다."
-        "날짜별 기록이 없는 경우 해당 일자는 weight/total_uf가 null로 반환됩니다."
-    ),
-    response_model=List[WeightUfPoint],
+    "/api/v1/stats/week",
+    response_model=Last7DaysStats,
+    summary="최근 7일 체중/제수량 및 혈압 통계",
+    description="최근 7일 동안의 체중과 제수량 추이, 혈압 통계를 반환합니다."
 )
-def get_weight_uf_trend(
+def get_week_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(AuthTokenDep),
+    current_user = Depends(AuthTokenDep),
 ):
-    try:
-        points = get_weight_uf_last_7_days(db, current_user.id)
-        return points
-    except SQLAlchemyError as e:
-        logger.exception("최근 7일 체중/제수량 통계 조회 중 DB 오류 발생")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="최근 7일 체중/제수량 통계를 조회하는 중 오류가 발생했습니다.",
-        ) from e
+    return get_weight_uf_last_7_days(db, current_user.id)

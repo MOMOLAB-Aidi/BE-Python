@@ -5,14 +5,14 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.db_models import Record
-from app.models.stats_schemas import WeightUfPoint
+from app.models.stats_schemas import WeightUfPoint, BloodPressureSummary, LastWeekStats
 
 
 # 최근 7일 동안의 일별 체중 & 일별 제수량 추이 조회
 def get_weight_uf_last_7_days(
     db: Session,
     user_id: int,
-) -> List[WeightUfPoint]:
+) -> LastWeekStats:
     today = date.today()
     start_date = today - timedelta(days=6)  # 오늘 포함 최근 7일
 
@@ -31,12 +31,9 @@ def get_weight_uf_last_7_days(
     )
 
     # 2. 날짜별로 접근하기 쉽게 dict로 매핑
-    record_by_date: dict[date, Record] = {
-        r.record_date: r for r in rows
-    }
+    record_by_date: dict[date, Record] = { r.record_date: r for r in rows }
 
-    # 3. 최근 7일(과거 → 오늘 순)로 list 채우기
-    result: List[WeightUfPoint] = []
+    points: List[WeightUfPoint] = []
     for offset in range(6, -1, -1):  # 6일 전 → 오늘
         d = today - timedelta(days=offset)
         rec = record_by_date.get(d)
@@ -48,7 +45,7 @@ def get_weight_uf_last_7_days(
             weight = None
             total_uf = None
 
-        result.append(
+        points.append(
             WeightUfPoint(
                 record_date=d,
                 weight=weight,
@@ -56,4 +53,40 @@ def get_weight_uf_last_7_days(
             )
         )
 
-    return result
+    # 3. 혈압 통계 계산 (최근 7일 전체 기준)
+    bp_values: list[tuple[int, int]] = []
+    for r in rows:
+        if r.systolic is not None and r.diastolic is not None:
+            bp_values.append((r.systolic, r.diastolic))
+
+    if bp_values:
+        # 평균
+        avg_systolic = sum(s for s, _ in bp_values) / len(bp_values)
+        avg_diastolic = sum(d for _, d in bp_values) / len(bp_values)
+
+        # 최고 / 최저 (수축기 기준으로 정렬 후 튜플 사용)
+        max_sys, max_dia = max(bp_values, key=lambda x: x[0])
+        min_sys, min_dia = min(bp_values, key=lambda x: x[0])
+
+        bp_summary = BloodPressureSummary(
+            avg_systolic=avg_systolic,
+            avg_diastolic=avg_diastolic,
+            max_systolic=max_sys,
+            max_diastolic=max_dia,
+            min_systolic=min_sys,
+            min_diastolic=min_dia,
+        )
+    else:
+        bp_summary = BloodPressureSummary(
+            avg_systolic=None,
+            avg_diastolic=None,
+            max_systolic=None,
+            max_diastolic=None,
+            min_systolic=None,
+            min_diastolic=None,
+        )
+
+    return Last7DaysStats(
+        points=points,
+        bp_summary=bp_summary,
+    )
