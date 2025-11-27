@@ -330,12 +330,13 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
 
         # 5. 스트림을 통해 응답을 실시간으로 사용자에게 전달
         for chunk in stream:
-            chunk_text = chunk.text
+            chunk_text = getattr(chunk, "text", "") or ""
             if not chunk_text:
                 continue
 
             full_response_text += chunk_text
-            yield chunk_text  # 실시간 응답 전송
+
+            yield chunk_text + "\n" # 줄 단위로 읽을 수 있도록 개행 추가
 
         streaming_completed = True
 
