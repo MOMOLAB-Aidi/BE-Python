@@ -512,4 +512,11 @@ def get_last_7_days_stats(
     db: Session = Depends(get_db),
     current_user = Depends(AuthTokenDep),
 ):
-    return get_weight_uf_last_7_days(db, current_user.id)
+    try:
+        return get_weight_uf_last_7_days(db, current_user.id)
+    except SQLAlchemyError as e:
+        logger.exception("최근 7일 통계 조회 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="최근 7일 통계 조회 중 서버 오류가 발생하였습니다.",
+        ) from e

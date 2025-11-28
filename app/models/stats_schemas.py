@@ -42,12 +42,12 @@ class WeeklyAverageResponse(ORMBase):
 
 
 class BloodPressureSummary(ORMBase):
-    avg_systolic: float = Field(None, description="최근 7일간 기록된 최고 혈압의 평균값")
-    avg_diastolic: float = Field(None, description="최근 7일간 기록된 최저 혈압의 평균값")
-    max_systolic: int = Field(None, description="최근 7일간 기록된 최고 혈압 중 가장 높은 값")
-    max_diastolic: int = Field(None, description="최근 7일간 기록된 최저 혈압 중 가장 높은 값")
-    min_systolic: int = Field(None, description="최근 7일간 기록된 최고 혈압 중 가장 낮은 값")
-    min_diastolic: int = Field(None, description="최근 7일간 기록된 최저 혈압 중 가장 낮은 값")
+    avg_systolic: float | None = Field(None, description="최근 7일간 기록된 최고 혈압의 평균값")
+    avg_diastolic: float | None = Field(None, description="최근 7일간 기록된 최저 혈압의 평균값")
+    max_systolic: int | None = Field(None, description="최근 7일간 기록된 최고 혈압 중 가장 높은 값")
+    max_diastolic: int | None = Field(None, description="최근 7일간 기록된 최저 혈압 중 가장 높은 값")
+    min_systolic: int | None = Field(None, description="최근 7일간 기록된 최고 혈압 중 가장 낮은 값")
+    min_diastolic: int | None = Field(None, description="최근 7일간 기록된 최저 혈압 중 가장 낮은 값")
 
 class Last7DaysStats(ORMBase):
     points: List[WeightUfPoint]

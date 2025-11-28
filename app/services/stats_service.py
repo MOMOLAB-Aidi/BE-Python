@@ -60,21 +60,25 @@ def get_weight_uf_last_7_days(
             bp_values.append((r.systolic, r.diastolic))
 
     if bp_values:
-        # 평균
-        avg_systolic = sum(s for s, _ in bp_values) / len(bp_values)
-        avg_diastolic = sum(d for _, d in bp_values) / len(bp_values)
+        # 평균 및 최고/최저 (수축기·이완기 각각에 대해 계산)
+        systolic_values = [s for s, _ in bp_values]
+        diastolic_values = [d for _, d in bp_values]
 
-        # 최고 / 최저 (수축기 기준으로 정렬 후 튜플 사용)
-        max_sys, max_dia = max(bp_values, key=lambda x: x[0])
-        min_sys, min_dia = min(bp_values, key=lambda x: x[0])
+        avg_systolic = sum(systolic_values) / len(systolic_values)
+        avg_diastolic = sum(diastolic_values) / len(diastolic_values)
+
+        max_systolic = max(systolic_values)
+        max_diastolic = max(diastolic_values)
+        min_systolic = min(systolic_values)
+        min_diastolic = min(diastolic_values)
 
         bp_summary = BloodPressureSummary(
-            avg_systolic=avg_systolic,
-            avg_diastolic=avg_diastolic,
-            max_systolic=max_sys,
-            max_diastolic=max_dia,
-            min_systolic=min_sys,
-            min_diastolic=min_dia,
+            avg_systolic = avg_systolic,
+            avg_diastolic = avg_diastolic,
+            max_systolic = max_systolic,
+            max_diastolic = max_diastolic,
+            min_systolic = min_systolic,
+            min_diastolic = min_diastolic,
         )
     else:
         bp_summary = BloodPressureSummary(
