@@ -5,14 +5,14 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.db_models import Record
-from app.models.stats_schemas import WeightUfPoint, BloodPressureSummary, LastWeekStats
+from app.models.stats_schemas import WeightUfPoint, BloodPressureSummary, Last7DaysStats
 
 
 # 최근 7일 동안의 일별 체중 & 일별 제수량 추이 조회
 def get_weight_uf_last_7_days(
     db: Session,
     user_id: int,
-) -> LastWeekStats:
+) -> Last7DaysStats:
     today = date.today()
     start_date = today - timedelta(days=6)  # 오늘 포함 최근 7일
 

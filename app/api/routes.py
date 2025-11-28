@@ -503,9 +503,10 @@ def delete_consult_session_route(
 
 @router.get(
     "/api/v1/stats/last-7-days",
-    response_model=Last7DaysStats,
+    tags=["통계"],
     summary="최근 7일 체중/제수량 및 혈압 통계",
-    description="최근 7일 동안의 체중과 제수량 추이, 혈압 통계를 반환합니다."
+    description="최근 7일 동안의 체중과 제수량 추이, 혈압 통계를 반환합니다.",
+    response_model=Last7DaysStats
 )
 def get_last_7_days_stats(
     db: Session = Depends(get_db),
