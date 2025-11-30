@@ -471,5 +471,35 @@ def update_record_with_exchanges(
     return rec
 
 
+# 오늘 날짜에 대한 완료된 교환 회차 수, 제수량 합계 반환
+def get_today_exchange_summary(
+    db: Session,
+    user_id: int,
+) -> Dict[str, int]:
 
+    today = _date.today()
 
+    rec: Optional[Record] = (
+        db.query(Record)
+        .options(joinedload(Record.exchanges))
+        .filter(
+            Record.user_id == user_id,
+            Record.record_date == today,
+        )
+        .one_or_none()
+    )
+
+    if not rec:
+        return {
+            "exchange_count": 0,
+            "total_uf": 0,
+        }
+
+    exchange_count = len(rec.exchanges or [])
+
+    total_uf = rec.total_uf
+
+    return {
+        "exchange_count": exchange_count,
+        "total_uf": total_uf,
+    }

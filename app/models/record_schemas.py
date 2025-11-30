@@ -172,3 +172,8 @@ class RecordPatch(RecordCommonPatch):
         default=None,
         description="수정할 회차 기록 리스트 (각 항목은 id 필수, 나머지는 부분 수정 가능)"
     )
+
+
+class TodayExchangeSummary(BaseModel):
+    exchange_count: int
+    total_uf: int
