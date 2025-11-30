@@ -20,7 +20,7 @@ from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
     SessionEndRequest, ConsultSessionSummary, ConsultMessage
 from app.models.record_schemas import \
-    RecordCreate, RecordPatch
+    RecordCreate, RecordPatch, TodayExchangeSummary
 from app.models.stats_schemas import WeightUfPoint, WeeklyAverageResponse, WeeklyAverageData, Last7DaysStats
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
     get_consult_history, get_consult_history_detail, delete_consult_session
@@ -69,11 +69,12 @@ def get_weekly_average(
     "/api/v1/records/today-summary",
     tags=["복막투석기록"],
     summary="오늘 날짜 교환 요약",
-    description="오늘 날짜의 교환 완료 회차 수와 제수량 합계를 반환합니다."
+    description="오늘 날짜의 교환 완료 회차 수와 제수량 합계를 반환합니다.",
+    response_model=TodayExchangeSummary,
 )
 def api_get_today_exchange_summary(
     db: Session = Depends(get_db),
-    current_user = Depends(AuthTokenDep),
+    current_user: User = Depends(AuthTokenDep),
 ):
     summary = get_today_exchange_summary(
         db=db,

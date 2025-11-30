@@ -497,10 +497,7 @@ def get_today_exchange_summary(
 
     exchange_count = len(rec.exchanges or [])
 
-    if rec.total_uf is not None:
-        total_uf = rec.total_uf
-    else:
-        total_uf = sum((e.uf or 0) for e in (rec.exchanges or []))
+    total_uf = rec.total_uf
 
     return {
         "exchange_count": exchange_count,
