@@ -28,7 +28,7 @@ from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, 
     download_from_gcs
 from app.services.record_service import get_weekly_average_records, rec_to_dict, \
     get_latest_records, delete_record, \
-    create_record_with_exchanges, update_record_with_exchanges
+    create_record_with_exchanges, update_record_with_exchanges, get_today_exchange_summary
 from app.services.stats_service import get_weight_uf_last_7_days
 
 router = APIRouter()
@@ -63,6 +63,23 @@ def get_weekly_average(
     except Exception as e:
         logger.exception("주간 평균 계산 중 예상치 못한 오류 발생")
         raise HTTPException(status_code=500, detail="주간 평균 계산 중 서버 오류가 발생했습니다.") from e
+
+
+@router.get(
+    "/api/v1/records/today-summary",
+    tags=["복막투석기록"],
+    summary="오늘 날짜 교환 요약",
+    description="오늘 날짜의 교환 완료 회차 수와 제수량 합계를 반환합니다."
+)
+def api_get_today_exchange_summary(
+    db: Session = Depends(get_db),
+    current_user = Depends(AuthTokenDep),
+):
+    summary = get_today_exchange_summary(
+        db=db,
+        user_id=current_user.id,
+    )
+    return summary
 
 
 @router.post(
