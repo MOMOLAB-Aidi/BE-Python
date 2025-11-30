@@ -1,7 +1,8 @@
 import json
 import logging
 import os
-from typing import Dict, Any
+from datetime import timedelta
+from typing import Dict, Any, Optional
 
 from dotenv import load_dotenv
 from google import genai
@@ -82,6 +83,37 @@ def download_from_gcs(gcs_path: str) -> bytes:
     except Exception as e:
         logger.exception("GCS 다운로드 실패")
         raise OcrError("GCS 다운로드 중 오류가 발생했습니다.", is_client_error=False) from e
+
+
+# 비공개 GCS 객체에 대해 일정 시간 동안만 유효한 Signed URL을 생성
+def generate_signed_gcs_url(
+    gcs_path: str,
+    expires_minutes: int = 60,
+    response_disposition: Optional[str] = None,
+) -> str:
+    try:
+        bucket = _get_bucket()
+        blob = bucket.blob(gcs_path)
+
+        # v4 Signed URL 생성
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(minutes=expires_minutes),
+            method="GET",
+            response_disposition=response_disposition,
+        )
+
+        logger.info(
+            f"GCS Signed URL 생성 완료: gs://{GCS_BUCKET_NAME}/{gcs_path}, "
+            f"expires_in={expires_minutes}min"
+        )
+        return url
+
+    except Exception as e:
+        logger.exception("GCS Signed URL 생성 실패")
+        raise OcrError(
+            "이미지 접근 URL 생성 중 오류가 발생했습니다.", is_client_error=False
+        ) from e
 
 
 def delete_from_gcs(gcs_path: str) -> None:
