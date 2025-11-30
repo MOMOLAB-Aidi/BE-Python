@@ -1,3 +1,4 @@
+import hashlib
 import re
 from datetime import time as dtime, date, timedelta
 from typing import Dict, Any, Optional, List, Tuple
@@ -189,7 +190,16 @@ def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_owner
         rec.total_uf = _as_int_in(p["total_uf"], -5000, 5000, "제수량 합계")
 
     if "gcs_path" in p and p["gcs_path"] is not None:
-        rec.gcs_path = str(p["gcs_path"])
+        path = str(p["gcs_path"])
+        user_hash = hashlib.sha256(str(user_id).encode()).hexdigest()[:16]
+
+        # 현재 사용자의 경로인지 검증
+        if not path.startswith(f"users/{user_hash}/"):
+            raise HTTPException(
+                status_code=403,
+                detail="다른 사용자의 GCS 경로는 사용할 수 없습니다."
+            )
+        rec.gcs_path = path
 
 def _apply_exchange_fields(target: RecordExchange, p: Dict[str, Any]) -> None:
     _apply_if_present(target, p, "exchange_time", lambda v: parse_time(v))
