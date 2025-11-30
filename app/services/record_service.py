@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.db_models.record import Record
 from app.db_models.record_exchange import RecordExchange
+from app.models.record_schemas import TodayExchangeSummary
 from app.services.ocr_service import delete_from_gcs, OcrError, generate_signed_gcs_url
 
 
@@ -475,31 +476,29 @@ def update_record_with_exchanges(
 def get_today_exchange_summary(
     db: Session,
     user_id: int,
-) -> Dict[str, int]:
+) -> TodayExchangeSummary:
 
     today = _date.today()
 
-    rec: Optional[Record] = (
+    rec = (
         db.query(Record)
         .options(joinedload(Record.exchanges))
-        .filter(
-            Record.user_id == user_id,
-            Record.record_date == today,
-        )
-        .one_or_none()
+        .filter(Record.user_id == user_id, Record.record_date == today)
+        .first()
     )
 
     if not rec:
-        return {
-            "exchange_count": 0,
-            "total_uf": 0,
-        }
+        return TodayExchangeSummary(
+            has_record=False,
+            exchange_count=0,
+            total_uf=0
+        )
 
     exchange_count = len(rec.exchanges or [])
+    total_uf = rec.total_uf or 0
 
-    total_uf = rec.total_uf
-
-    return {
-        "exchange_count": exchange_count,
-        "total_uf": total_uf,
-    }
+    return TodayExchangeSummary(
+        has_record=True,
+        exchange_count=exchange_count,
+        total_uf=total_uf,
+    )

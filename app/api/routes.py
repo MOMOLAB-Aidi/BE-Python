@@ -76,10 +76,7 @@ def api_get_today_exchange_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(AuthTokenDep),
 ):
-    summary = get_today_exchange_summary(
-        db=db,
-        user_id=current_user.id,
-    )
+    summary = get_today_exchange_summary(db=db, user_id=current_user.id)
     return summary
 
 
