@@ -175,5 +175,6 @@ class RecordPatch(RecordCommonPatch):
 
 
 class TodayExchangeSummary(BaseModel):
+    has_record: bool
     exchange_count: int
     total_uf: int
