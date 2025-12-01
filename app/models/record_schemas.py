@@ -41,7 +41,7 @@ class RecordCommonPatch(ORMBase):
     urine_count: Optional[int] = Field(None, ge=0, le=50)
     turbidity: Optional[Turbidity] = None
     notes: Optional[str] = Field(None, max_length=2000)
-    total_uf: Optional[int] = Field(None, ge=-5000, le=5000)
+    total_uf: Optional[int] = Field(None, ge=-2500, le=2500)
 
 
 # 회차 정보 생성 스키마
@@ -115,7 +115,7 @@ class RecordCreate(ORMBase):
     urine_count: int = Field(..., ge=0, le=50)
     turbidity: Turbidity = Field(..., description="'없음' 또는 '있음'")
     notes: Optional[str] = None
-    total_uf: int = Field(..., ge=-5000, le=5000, description="제수량 합계")
+    total_uf: int = Field(..., ge=-2500, le=2500, description="제수량 합계")
     gcs_path: Optional[str] = None
     exchanges: List[RecordExchangeCreate] = Field(..., min_length=1, max_length=5, description="회차별 정보 (1~5개)")
 
@@ -177,4 +177,4 @@ class RecordPatch(RecordCommonPatch):
 class TodayExchangeSummary(BaseModel):
     has_record: bool = Field(..., description="오늘 날짜에 복막투석 기록이 존재하는지의 여부", examples=[True])
     exchange_count: int = Field(..., ge=0, le=5, description="오늘 완료된 교환 회차 개수", examples=[4])
-    total_uf: int = Field(..., ge=-5000, le=5000, description="오늘의 제수량 합계 (단위: g)", examples=[500])
+    total_uf: int = Field(..., ge=-2500, le=2500, description="오늘의 제수량 합계 (단위: g)", examples=[500])

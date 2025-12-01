@@ -188,7 +188,7 @@ def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_owner
         rec.notes = str(p["notes"])[:2000]
 
     if "total_uf" in p and p["total_uf"] is not None:
-        rec.total_uf = _as_int_in(p["total_uf"], -5000, 5000, "제수량 합계")
+        rec.total_uf = _as_int_in(p["total_uf"], -2500, 2500, "제수량 합계")
 
     if "gcs_path" in p and p["gcs_path"] is not None:
         path = str(p["gcs_path"])
