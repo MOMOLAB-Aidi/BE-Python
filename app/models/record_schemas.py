@@ -34,11 +34,11 @@ class RecordCommonPatch(ORMBase):
     )
     record_date: Optional[date] = None
     record_dw: Optional[DayWeekKR] = None
-    weight: Optional[float] = Field(None, ge=20.0, le=300.0)
+    weight: Optional[float] = Field(None, ge=30.0, le=200.0)
     systolic: Optional[int] = Field(None, ge=70, le=240)
     diastolic: Optional[int] = Field(None, ge=40, le=160)
     fasting_glucose: Optional[int] = Field(None, ge=40, le=600)
-    urine_count: Optional[int] = Field(None, ge=0, le=50)
+    urine_count: Optional[int] = Field(None, ge=0, le=30)
     turbidity: Optional[Turbidity] = None
     notes: Optional[str] = Field(None, max_length=2000)
     total_uf: Optional[int] = Field(None, ge=-2500, le=2500)
@@ -108,11 +108,11 @@ class RecordCreate(ORMBase):
     )
     record_date: Optional[date] = Field(None, description="기록 날짜, 비워두면 오늘 날짜 사용")
     record_dw: DayWeekKR = Field(..., description="요일: 월/화/수/목/금/토/일")
-    weight: float = Field(..., ge=20.0, le=300.0)
+    weight: float = Field(..., ge=30.0, le=200.0)
     systolic: int = Field(..., ge=70, le=240)
     diastolic: int = Field(..., ge=40, le=160)
     fasting_glucose: int = Field(..., ge=40, le=600)
-    urine_count: int = Field(..., ge=0, le=50)
+    urine_count: int = Field(..., ge=0, le=30)
     turbidity: Turbidity = Field(..., description="'없음' 또는 '있음'")
     notes: Optional[str] = None
     total_uf: int = Field(..., ge=-2500, le=2500, description="제수량 합계")

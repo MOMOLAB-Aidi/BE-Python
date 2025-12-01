@@ -166,7 +166,7 @@ def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_owner
         rec.record_dw = dw
 
     if "weight" in p and p["weight"] is not None:
-        rec.weight = round(_as_float_in(p["weight"], 20.0, 300.0, "체중(kg)"), 1)
+        rec.weight = round(_as_float_in(p["weight"], 30.0, 200.0, "체중(kg)"), 1)
 
     if "systolic" in p and p["systolic"] is not None:
         rec.systolic = _as_int_in(p["systolic"], 70, 240, "수축기")
@@ -178,7 +178,7 @@ def apply_record_patch(rec: Record, p: Dict[str, Any], user_id: int, check_owner
         rec.fasting_glucose = _as_int_in(p["fasting_glucose"], 40, 600, "공복혈당")
 
     if "urine_count" in p and p["urine_count"] is not None:
-        rec.urine_count = _as_int_in(p["urine_count"], 0, 50, "소변 횟수")
+        rec.urine_count = _as_int_in(p["urine_count"], 0, 30, "소변 횟수")
 
     if "turbidity" in p and p["turbidity"] is not None:
         vrng(p["turbidity"] in {"없음", "있음"}, "turbidity 값 오류(없음/있음)")
