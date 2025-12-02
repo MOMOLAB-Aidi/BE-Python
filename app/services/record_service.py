@@ -445,26 +445,36 @@ def update_record_with_exchanges(
     if common_patch:
         apply_record_patch(rec, common_patch, user_id=user_id, check_ownership=False)
 
-    # 회차 수정
-    if exchanges_payload is not None:
-        exchanges_map = {e.id: e for e in (rec.exchanges or [])}
+        # 회차 수정 + 신규 생성
+        if exchanges_payload is not None:
+            rec.exchanges = rec.exchanges or []
+            exchanges_map = {e.id: e for e in rec.exchanges if e.id is not None}
 
-        for update_data in exchanges_payload:
-            exchange_id = update_data.get("id")
-            if exchange_id is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="회차 수정을 위해서는 'id'가 필수입니다."
-                )
+            for update_data in exchanges_payload:
+                exchange_id = update_data.get("id")
 
-            target = exchanges_map.get(exchange_id)
-            if target is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"회차 ID {exchange_id}를 찾을 수 없습니다."
-                )
+                if exchange_id is None:
+                    # 새 회차 생성
+                    next_no = _next_exchange_no(rec)
+                    new_ex = RecordExchange(
+                        exchange_no=next_no,
+                        user_id=user_id,
+                        record=rec,
+                    )
+                    _apply_exchange_fields(new_ex, update_data)
+                    rec.exchanges.append(new_ex)
+                else:
+                    # 기존 회차 수정
+                    target = exchanges_map.get(exchange_id)
+                    if target is None:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"회차 ID {exchange_id}를 찾을 수 없습니다."
+                        )
+                    _apply_exchange_fields(target, update_data)
 
-            _apply_exchange_fields(target, update_data)
+            # 최종 회차 개수 제한(1~5)
+            vrng(1 <= len(rec.exchanges) <= 5, "회차는 1~5개까지 입력할 수 있습니다.")
 
     db.add(rec)
     db.commit()
