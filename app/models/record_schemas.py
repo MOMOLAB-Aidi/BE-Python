@@ -131,7 +131,7 @@ class RecordExchangePatch(ORMBase):
             }
         }
     )
-    id: int = Field(..., description="수정할 회차의 ID")
+    id: Optional[int] = Field(None, description="수정할 회차의 ID")
     exchange_no: Optional[int] = Field(None, ge=1, le=5, description="구분(회차)")
     exchange_time: Optional[TimeStr] = Field(None, description="HH:MM 또는 HH:MM:SS")
     drain_volume: Optional[int] = Field(None, ge=0, le=6000)
