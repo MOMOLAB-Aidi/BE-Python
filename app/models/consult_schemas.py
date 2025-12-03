@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from pydantic import Field
 
@@ -33,12 +34,16 @@ class SessionEndResponse(ORMBase):
     status: str
 
 
-class ConsultSessionSummary(ORMBase):
+class ConsultSession(ORMBase):
     session_id: str
     ended_at: datetime = Field(..., description="해당 세션의 종료 날짜와 시각")
-    first_user_question: str = Field(..., description="환자의 첫 질문")
+    first_user_question: Optional[str] = Field(None, description="환자의 첫 질문")
 
 class ConsultMessage(ORMBase):
     role: MessageRole
     content: str
     created_at: datetime
+
+class ConsultSessionSummaryRow(ORMBase):
+    session_id: str
+    summary: str = Field(..., min_length=50, max_length=120, description="50~120자 telegram 스타일 상담 요약")

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, date
 
 from starlette.responses import StreamingResponse
+from starlette.status import HTTP_201_CREATED
 
 from app.core.db import get_db
 
@@ -18,12 +19,13 @@ from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
-    SessionEndRequest, ConsultSessionSummary, ConsultMessage
+    SessionEndRequest, ConsultMessage, ConsultSession, ConsultSessionSummaryRow
 from app.models.record_schemas import \
     RecordCreate, RecordPatch, TodayExchangeSummary
-from app.models.stats_schemas import WeightUfPoint, WeeklyAverageResponse, WeeklyAverageData, Last7DaysStats
+from app.models.stats_schemas import WeeklyAverageResponse, WeeklyAverageData, Last7DaysStats
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
-    get_consult_history, get_consult_history_detail, delete_consult_session
+    get_consult_history, get_consult_history_detail, delete_consult_session, summarize_consult_session, \
+    get_consult_summary_by_session
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
     download_from_gcs
 from app.services.record_service import get_weekly_average_records, rec_to_dict, \
@@ -423,7 +425,7 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
     tags=["에이전트 상담"],
     summary="전체 상담 기록 목록 조회",
     description="세션별 상담 이력을 하나씩 묶어 전체 상담 기록 목록을 조회합니다.",
-    response_model=list[ConsultSessionSummary],
+    response_model=list[ConsultSession],
 )
 def get_consult_history_routes(
     skip: int = Query(0, ge=0, description="건너뛸 레코드 수"),
@@ -434,7 +436,7 @@ def get_consult_history_routes(
     try:
         summaries_dict = get_consult_history(db, current_user.id, skip=skip, limit=limit)
         # dict → Pydantic 모델로 변환
-        return [ConsultSessionSummary(**s) for s in summaries_dict]
+        return [ConsultSession(**s) for s in summaries_dict]
     except SQLAlchemyError as e:
         logger.exception("상담 기록 조회 중 DB 오류 발생")
         raise HTTPException(
@@ -514,6 +516,74 @@ def delete_consult_session_route(
             status_code=500,
             detail="상담 기록 삭제 중 서버 오류가 발생했습니다.",
         ) from e
+
+
+@router.post(
+    "/api/v1/history/{session_id}/summary",
+    tags=["에이전트 상담"],
+    response_model=ConsultSessionSummaryRow,
+    summary="특정 상담 세션 요약",
+    description="특정 상담 세션이 끝난 후, 전체 상담 내용을 50자~120자 내로 요약하여 제공합니다.",
+    status_code=HTTP_201_CREATED,
+)
+def create_consult_summary(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
+):
+    try:
+        summary_text = summarize_consult_session(
+            db=db,
+            user_id=current_user.id,
+            session_id=session_id,
+        )
+
+        return ConsultSessionSummaryRow(
+            session_id=session_id,
+            summary=summary_text,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.exception("상담 요약 생성 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="상담 요약 생성 중 서버 오류가 발생했습니다.",
+        ) from e
+    except Exception as e:
+        logger.exception("상담 요약 생성 중 예상치 못한 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="상담 요약 생성 중 서버 오류가 발생했습니다.",
+        ) from e
+
+
+@router.get(
+    "/api/v1/history/{session_id}/summary",
+    tags=["에이전트 상담"],
+    response_model=ConsultSessionSummaryRow,
+    summary="특정 상담 요약 조회",
+    description="특정 상담의 요약 내용을 조회합니다.",
+)
+def get_consult_summary(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
+):
+    summary_row = get_consult_summary_by_session(
+        db=db,
+        user_id=current_user.id,
+        session_id=session_id,
+    )
+
+    if summary_row is None:
+        # 아직 요약이 생성 안 됐거나, 잘못된 세션 아이디
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="해당 세션의 상담 요약이 존재하지 않습니다.",
+        )
+
+    return summary_row
 
 
 @router.get(

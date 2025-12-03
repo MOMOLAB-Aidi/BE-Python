@@ -2,13 +2,13 @@ import logging
 import threading
 from typing import Dict, Any, Generator
 
+from fastapi import HTTPException, status
 from google import genai
 from google.genai import types
 from sqlalchemy import desc, select, func
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
-from app.db_models import Record
+from app.db_models import Record, ConsultSummary
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
 from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
 from app.models.consult_schemas import MessageRole
@@ -463,7 +463,13 @@ def delete_consult_session(
     if not exists:
         return 0
 
-    # 2. 있으면 삭제
+    # 2. 관련 요약 삭제
+    db.query(ConsultSummary).filter(
+        ConsultSummary.user_id == user_id,
+        ConsultSummary.session_id == session_id,
+    ).delete(synchronize_session=False)
+
+    # 3. 로그 삭제
     deleted_count = (
         db.query(ConsultLog)
         .filter(
@@ -474,3 +480,179 @@ def delete_consult_session(
     )
     db.commit()
     return deleted_count
+
+
+# 전보(telegram) 스타일 요약 프롬프트
+SUMMARY_SYSTEM_PROMPT = """
+You are an AI assistant that summarizes one completed consultation session for a patient undergoing peritoneal dialysis.
+
+[Goal]
+- Produce ONE short, natural-sounding "telegram style" summary (~50–100 chars).
+- Tone should be concise but not overly formal or stiff. 
+- Avoid mechanical or bureaucratic expressions. Aim for a natural, smooth Korean summary.
+
+[Content]
+- Compress all patient questions into 2–3 short topic phrases (Examples. "체중 증가·부종", "혈압 관리", "식단 고민").
+- Compress the agent's guidance into 1–2 short actionable phrases (Examples. "수분·염분 조절", "매일 체중 확인", "의료진과 조율").
+- The final sentence should follow this pattern: "[patient topics], [main guidance/조언]."
+- Keep wording compact but readable; avoid overly scientific tone unless necessary.
+
+[Style Rules]
+- Language MUST match the main language of the conversation.
+- Output MUST be: 
+  - a single sentence
+  - 50–120 characters ideally (minimum 50)
+  - no greetings, no politeness, no emoji
+  - no quotation marks, no bullet points, no line breaks
+- Use comma-based, telegraphic style typical of Korean telegram summaries.
+- Keep it natural and fluid (e.g., “~고민”, “~조언”, “~확인”, “~조율” 등).
+
+[Examples]
+- “체중·부종·식단 고민, 수분·염분 줄이고 매일 체중 확인하며 치료 방향 조율”
+- “혈압·운동·수분 섭취 문의, 혈압 기록·수분 제한·운동 강도는 의료진과 조율”
+"""
+
+# 특정 세션의 전체 상담 내용을 50~100자 전보 스타일로 요약
+# 환자 질문은 2~3개 주제 토픽으로, 에이전트 답변은 1~2개 핵심 조언으로 압축
+def summarize_consult_session(
+    db: Session,
+    user_id: int,
+    session_id: str,
+) -> str:
+    # 이미 요약이 있는지 확인
+    existing = (
+        db.query(ConsultSummary)
+        .filter(
+            ConsultSummary.user_id == user_id,
+            ConsultSummary.session_id == session_id,
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 요약이 완료된 상담 세션입니다.",
+        )
+
+    # 대화 로그 가져오기
+    logs = (
+        db.query(ConsultLog)
+        .filter(
+            ConsultLog.user_id == user_id,
+            ConsultLog.session_id == session_id,
+        )
+        .order_by(ConsultLog.created_at.asc())
+        .all()
+    )
+
+    if not logs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="해당 세션의 상담 기록이 없습니다.",
+        )
+
+    # role: content 형식으로 전체 대화 구성
+    conversation_text = "\n".join(
+        f"{(log.role.value if hasattr(log.role, 'value') else log.role)}: {log.content}"
+        for log in logs
+    )
+
+    if client is None:
+        # 첫 100자를 잘라서 반환
+        text = conversation_text.replace("\n", " ")
+        return (text[:100] + "...") if len(text) > 100 else text
+
+    try:
+        # 요약 생성 프롬프트
+        prompt = (
+            "Summarize the following consultation between a patient and an AI agent into ONE telegram-style line.\n"
+            "- Compress all patient questions into 2–3 short topic phrases (Examples. 'weight gain and swelling', 'blood pressure control').\n"
+            "- Compress the agent's answers into 1–2 short phrases describing the main guidance.\n"
+            "- Use the main language of the conversation (Korean or English).\n"
+            "- The summary MUST be at least 50 characters long and ideally within 100–120 characters in total,\n"
+            "  with no greetings, no politeness, no emoji, no quotation marks, no bullet points, no line breaks.\n"
+            "- Prefer dense, comma-separated phrases rather than a polite full sentence.\n\n"
+            "--- Conversation ---\n"
+            f"{conversation_text}\n"
+        )
+
+        resp = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SUMMARY_SYSTEM_PROMPT
+            )
+        )
+
+        summary_text = (resp.text or "").strip()
+        summary_text = " ".join(summary_text.split())
+
+        # 50자 미만이면 한 번 더 요청
+        if len(summary_text) < 50:
+            try:
+                refine_prompt = (
+                    "The following summary is too short. Rewrite it as ONE telegram-style line "
+                    "with at least 50 and at most about 120 characters, keeping the same meaning.\n"
+                    "- No greetings, no politeness, no emoji, no quotation marks, no bullet points, no line breaks.\n"
+                    "- Use compact, comma-separated phrases instead of a polite full sentence.\n\n"
+                    f"Original summary:\n{summary_text}"
+                )
+
+                refine_resp = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=refine_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SUMMARY_SYSTEM_PROMPT
+                    )
+                )
+
+                refined = (refine_resp.text or "").strip()
+                refined = " ".join(refined.split())
+
+                if len(refined) >= 50:
+                    summary_text = refined
+            except Exception as refine_err:
+                logger.error(f"[{session_id}] 요약 길이 보정 중 오류: {refine_err}", exc_info=True)
+
+    except Exception as e:
+        logger.error(f"[{session_id}] 상담 요약 생성 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="상담 요약 생성 중 오류가 발생했습니다.",
+        ) from e
+
+    try:
+        # DB에 저장
+        summary_row = ConsultSummary(
+            user_id=user_id,
+            session_id=session_id,
+            summary=summary_text,
+        )
+        db.add(summary_row)
+        db.commit()
+        db.refresh(summary_row)
+
+        return summary_row.summary
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[{session_id}] 요약 저장 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="상담 요약 저장 중 오류가 발생했습니다.",
+        ) from e
+
+
+def get_consult_summary_by_session(
+    db: Session,
+    user_id: int,
+    session_id: str,
+) -> ConsultSummary | None:
+    return (
+        db.query(ConsultSummary)
+        .filter(
+            ConsultSummary.user_id == user_id,
+            ConsultSummary.session_id == session_id,
+        )
+        .first()
+    )
