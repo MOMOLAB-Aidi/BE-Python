@@ -38,6 +38,7 @@ class ConsultSession(ORMBase):
     session_id: str
     ended_at: datetime = Field(..., description="해당 세션의 종료 날짜와 시각")
     first_user_question: Optional[str] = Field(None, description="환자의 첫 질문")
+    summary: Optional[str] = Field(None, min_length=50, max_length=120, description="전보(telegram) 스타일 상담 요약")
 
 class ConsultMessage(ORMBase):
     role: MessageRole
