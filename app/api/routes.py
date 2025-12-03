@@ -423,7 +423,7 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
     "/api/v1/consults",
     tags=["에이전트 상담"],
     summary="전체 상담 기록 목록 조회",
-    description="세션별 상담 이력을 하나씩 묶어 전체 상담 기록 목록을 조회합니다.",
+    description="세션별 상담 이력을 하나씩 묶어 전체 상담 기록 목록을 조회합니다. 각 세션에 요약이 존재하면 함께 반환됩니다.",
     response_model=list[ConsultSession],
 )
 def get_consult_history_routes(
