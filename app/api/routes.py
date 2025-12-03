@@ -421,7 +421,7 @@ def end_chat_session(request: SessionEndRequest, current_user: User = Depends(Au
 
 
 @router.get(
-    "/api/v1/consults/history",
+    "/api/v1/consults",
     tags=["에이전트 상담"],
     summary="전체 상담 기록 목록 조회",
     description="세션별 상담 이력을 하나씩 묶어 전체 상담 기록 목록을 조회합니다.",
@@ -446,7 +446,7 @@ def get_consult_history_routes(
 
 
 @router.get(
-    "/api/v1/consults/history/{session_id}",
+    "/api/v1/consults/{session_id}",
     tags=["에이전트 상담"],
     summary="특정 상담 세션 상세 조회",
     description="특정 세션에 대해 상담 로그를 시간순으로 조회합니다.",
@@ -519,7 +519,7 @@ def delete_consult_session_route(
 
 
 @router.post(
-    "/api/v1/history/{session_id}/summary",
+    "/api/v1/consults/{session_id}/summary",
     tags=["에이전트 상담"],
     response_model=ConsultSessionSummaryRow,
     summary="특정 상담 세션 요약",
@@ -559,7 +559,7 @@ def create_consult_summary(
 
 
 @router.get(
-    "/api/v1/history/{session_id}/summary",
+    "/api/v1/consults/{session_id}/summary",
     tags=["에이전트 상담"],
     response_model=ConsultSessionSummaryRow,
     summary="특정 상담 요약 조회",
