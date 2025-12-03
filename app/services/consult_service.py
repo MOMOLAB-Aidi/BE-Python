@@ -381,19 +381,29 @@ def get_consult_history(
         limit: int = 50,
 ) -> list[dict]:
 
-    base_query = (
+    # 유저별 세션 목록 + 마지막 시간만 뽑는 서브쿼리
+    base_subq = (
         db.query(
             ConsultLog.session_id.label("session_id"),
             func.max(ConsultLog.created_at).label("ended_at"),
         )
         .filter(ConsultLog.user_id == user_id)
         .group_by(ConsultLog.session_id)
-        .order_by(desc(func.max(ConsultLog.created_at)))
-    )
+    ).subquery()
 
-    # 페이징 적용
+    # 서브쿼리에 consult_summary를 LEFT JOIN 해서 summary 같이 가져오기
     rows = (
-        base_query
+        db.query(
+            base_subq.c.session_id,
+            base_subq.c.ended_at,
+            ConsultSummary.summary,
+        )
+        .outerjoin(
+            ConsultSummary,
+            (ConsultSummary.user_id == user_id) &
+            (ConsultSummary.session_id == base_subq.c.session_id),
+        )
+        .order_by(desc(base_subq.c.ended_at))
         .offset(skip)
         .limit(limit)
         .all()
@@ -421,6 +431,7 @@ def get_consult_history(
                 "session_id": r.session_id,
                 "ended_at": r.ended_at,
                 "first_user_question": first_user_question,
+                "summary": r.summary,
             }
         )
 
@@ -641,18 +652,3 @@ def summarize_consult_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="상담 요약 저장 중 오류가 발생했습니다.",
         ) from e
-
-
-def get_consult_summary_by_session(
-    db: Session,
-    user_id: int,
-    session_id: str,
-) -> ConsultSummary | None:
-    return (
-        db.query(ConsultSummary)
-        .filter(
-            ConsultSummary.user_id == user_id,
-            ConsultSummary.session_id == session_id,
-        )
-        .first()
-    )
