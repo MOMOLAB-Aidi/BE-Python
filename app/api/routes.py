@@ -23,7 +23,8 @@ from app.models.record_schemas import \
     RecordCreate, RecordPatch, TodayExchangeSummary
 from app.models.stats_schemas import WeeklyAverageResponse, WeeklyAverageData, Last7DaysStats
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
-    get_consult_history, get_consult_history_detail, delete_consult_session, summarize_consult_session
+    get_consult_history, get_consult_history_detail, delete_consult_session, summarize_consult_session, \
+    get_consult_summary_by_session
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
     download_from_gcs
 from app.services.record_service import get_weekly_average_records, rec_to_dict, \
@@ -539,6 +540,33 @@ def create_consult_summary(
         session_id=session_id,
         summary=summary_text,
     )
+
+@router.get(
+    "/api/v1/history/{session_id}/summary",
+    tags=["에이전트 상담"],
+    response_model=ConsultSessionSummaryRow,
+    summary="특정 상담 요약 조회",
+    description="특정 상담의 요약 내용을 조회합니다.",
+)
+def get_consult_summary(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(AuthTokenDep),
+):
+    summary_row = get_consult_summary_by_session(
+        db=db,
+        user_id=current_user.id,
+        session_id=session_id,
+    )
+
+    if summary_row is None:
+        # 아직 요약이 생성 안 됐거나, 잘못된 세션 아이디
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="해당 세션의 상담 요약이 존재하지 않습니다.",
+        )
+
+    return summary_row
 
 
 @router.get(

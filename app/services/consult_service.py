@@ -627,3 +627,18 @@ def summarize_consult_session(
     db.refresh(summary_row)
 
     return summary_row.summary
+
+
+def get_consult_summary_by_session(
+    db: Session,
+    user_id: int,
+    session_id: str,
+) -> ConsultSummary | None:
+    return (
+        db.query(ConsultSummary)
+        .filter(
+            ConsultSummary.user_id == user_id,
+            ConsultSummary.session_id == session_id,
+        )
+        .first()
+    )
