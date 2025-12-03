@@ -2,13 +2,13 @@ import logging
 import threading
 from typing import Dict, Any, Generator
 
+from fastapi import HTTPException, status
 from google import genai
 from google.genai import types
 from sqlalchemy import desc, select, func
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
-from app.db_models import Record
+from app.db_models import Record, ConsultSummary
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
 from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
 from app.models.consult_schemas import MessageRole
@@ -513,6 +513,21 @@ def summarize_consult_session(
     user_id: int,
     session_id: str,
 ) -> str:
+    # 이미 요약이 있는지 확인
+    existing = (
+        db.query(ConsultSummary)
+        .filter(
+            ConsultSummary.user_id == user_id,
+            ConsultSummary.session_id == session_id,
+        )
+        .first()
+    )
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="이미 요약이 완료된 상담 세션입니다.",
+        )
 
     # 대화 로그 가져오기
     logs = (
@@ -526,7 +541,10 @@ def summarize_consult_session(
     )
 
     if not logs:
-        return "해당 세션의 상담 기록이 없습니다."
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="해당 세션의 상담 기록이 없습니다.",
+        )
 
     # role: content 형식으로 전체 대화 구성
     conversation_text = "\n".join(
@@ -591,8 +609,21 @@ def summarize_consult_session(
             except Exception as refine_err:
                 logger.error(f"[{session_id}] 요약 길이 보정 중 오류: {refine_err}", exc_info=True)
 
-        return summary_text
-
     except Exception as e:
         logger.error(f"[{session_id}] 상담 요약 생성 실패: {e}", exc_info=True)
-        return "상담 요약 생성 중 오류가 발생했습니다."
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="상담 요약 생성 중 오류가 발생했습니다.",
+        )
+
+    # DB에 저장
+    summary_row = ConsultSummary(
+        user_id=user_id,
+        session_id=session_id,
+        summary=summary_text,
+    )
+    db.add(summary_row)
+    db.commit()
+    db.refresh(summary_row)
+
+    return summary_row.summary

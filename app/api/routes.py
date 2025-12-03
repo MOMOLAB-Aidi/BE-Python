@@ -18,10 +18,10 @@ from app.db_models.user import User
 
 from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.consult_schemas import SessionStartResponse, ChatRequest, SessionEndResponse, \
-    SessionEndRequest, ConsultMessage, ConsultSession, ConsultSummary
+    SessionEndRequest, ConsultMessage, ConsultSession, ConsultSessionSummaryRow
 from app.models.record_schemas import \
     RecordCreate, RecordPatch, TodayExchangeSummary
-from app.models.stats_schemas import WeightUfPoint, WeeklyAverageResponse, WeeklyAverageData, Last7DaysStats
+from app.models.stats_schemas import WeeklyAverageResponse, WeeklyAverageData, Last7DaysStats
 from app.services.consult_service import start_new_session, get_session_status, get_agent_response_stream, end_session, \
     get_consult_history, get_consult_history_detail, delete_consult_session, summarize_consult_session
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
@@ -516,27 +516,18 @@ def delete_consult_session_route(
         ) from e
 
 
-@router.get(
+@router.post(
     "/api/v1/history/{session_id}/summary",
     tags=["에이전트 상담"],
-    response_model=ConsultSummary,
+    response_model=ConsultSessionSummaryRow,
     summary="특정 상담 세션 요약",
     description="특정 상담 세션이 끝난 후, 전체 상담 내용을 50자~120자 내로 요약하여 제공합니다.",
 )
-def read_consult_summary(
+def create_consult_summary(
     session_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(AuthTokenDep),
 ):
-
-    # 해당 세션의 로그 존재 여부 체크
-    logs = get_consult_history_detail(
-        db=db,
-        user_id=current_user.id,
-        session_id=session_id,
-    )
-    if not logs:
-        raise HTTPException(status_code=404, detail="해당 세션의 상담 기록이 없습니다.")
 
     summary_text = summarize_consult_session(
         db=db,
@@ -544,7 +535,7 @@ def read_consult_summary(
         session_id=session_id,
     )
 
-    return ConsultSummary(
+    return ConsultSessionSummaryRow(
         session_id=session_id,
         summary=summary_text,
     )

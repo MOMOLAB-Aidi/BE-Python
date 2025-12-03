@@ -43,6 +43,6 @@ class ConsultMessage(ORMBase):
     content: str
     created_at: datetime
 
-class ConsultSummary(ORMBase):
+class ConsultSessionSummaryRow(ORMBase):
     session_id: str
     summary: str = Field(..., description="50~100자 telegram 스타일 상담 요약")

@@ -42,3 +42,9 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+
+    consult_summary_list = relationship(
+        "ConsultSummary",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
