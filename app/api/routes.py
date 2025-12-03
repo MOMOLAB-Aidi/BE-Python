@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, date
 
 from starlette.responses import StreamingResponse
+from starlette.status import HTTP_201_CREATED
 
 from app.core.db import get_db
 
@@ -523,23 +524,47 @@ def delete_consult_session_route(
     response_model=ConsultSessionSummaryRow,
     summary="특정 상담 세션 요약",
     description="특정 상담 세션이 끝난 후, 전체 상담 내용을 50자~120자 내로 요약하여 제공합니다.",
+    status_code=HTTP_201_CREATED,
 )
 def create_consult_summary(
     session_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(AuthTokenDep),
 ):
+    try:
+        # 이미 요약이 존재하는지 확인
+        existing_summary = get_consult_summary_by_session(db=db, user_id=current_user.id, session_id=session_id)
+        if existing_summary:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="해당 세션의 요약이 이미 존재합니다.",
+            )
 
-    summary_text = summarize_consult_session(
-        db=db,
-        user_id=current_user.id,
-        session_id=session_id,
-    )
+        summary_text = summarize_consult_session(
+            db=db,
+            user_id=current_user.id,
+            session_id=session_id,
+        )
 
-    return ConsultSessionSummaryRow(
-        session_id=session_id,
-        summary=summary_text,
-    )
+        return ConsultSessionSummaryRow(
+            session_id=session_id,
+            summary=summary_text,
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.exception("상담 요약 생성 중 DB 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="상담 요약 생성 중 서버 오류가 발생했습니다.",
+        ) from e
+    except Exception as e:
+        logger.exception("상담 요약 생성 중 예상치 못한 오류 발생")
+        raise HTTPException(
+            status_code=500,
+            detail="상담 요약 생성 중 서버 오류가 발생했습니다.",
+        ) from e
+
 
 @router.get(
     "/api/v1/history/{session_id}/summary",

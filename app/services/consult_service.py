@@ -463,7 +463,13 @@ def delete_consult_session(
     if not exists:
         return 0
 
-    # 2. 있으면 삭제
+    # 2. 관련 요약 삭제
+    db.query(ConsultSummary).filter(
+        ConsultSummary.user_id == user_id,
+        ConsultSummary.session_id == session_id,
+    ).delete(synchronize_session=False)
+
+    # 3. 로그 삭제
     deleted_count = (
         db.query(ConsultLog)
         .filter(
@@ -614,19 +620,27 @@ def summarize_consult_session(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="상담 요약 생성 중 오류가 발생했습니다.",
+        ) from e
+
+    try:
+        # DB에 저장
+        summary_row = ConsultSummary(
+            user_id=user_id,
+            session_id=session_id,
+            summary=summary_text,
         )
+        db.add(summary_row)
+        db.commit()
+        db.refresh(summary_row)
 
-    # DB에 저장
-    summary_row = ConsultSummary(
-        user_id=user_id,
-        session_id=session_id,
-        summary=summary_text,
-    )
-    db.add(summary_row)
-    db.commit()
-    db.refresh(summary_row)
-
-    return summary_row.summary
+        return summary_row.summary
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[{session_id}] 요약 저장 실패: {e}", exe_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="상담 요약 저장 중 오류가 발생했습니다.",
+        ) from e
 
 
 def get_consult_summary_by_session(
