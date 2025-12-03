@@ -532,14 +532,6 @@ def create_consult_summary(
     current_user: User = Depends(AuthTokenDep),
 ):
     try:
-        # 이미 요약이 존재하는지 확인
-        existing_summary = get_consult_summary_by_session(db=db, user_id=current_user.id, session_id=session_id)
-        if existing_summary:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="해당 세션의 요약이 이미 존재합니다.",
-            )
-
         summary_text = summarize_consult_session(
             db=db,
             user_id=current_user.id,

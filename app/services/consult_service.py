@@ -531,7 +531,7 @@ def summarize_consult_session(
 
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="이미 요약이 완료된 상담 세션입니다.",
         )
 
@@ -636,7 +636,7 @@ def summarize_consult_session(
         return summary_row.summary
     except Exception as e:
         db.rollback()
-        logger.error(f"[{session_id}] 요약 저장 실패: {e}", exe_info=True)
+        logger.error(f"[{session_id}] 요약 저장 실패: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="상담 요약 저장 중 오류가 발생했습니다.",
