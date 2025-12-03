@@ -35,8 +35,7 @@ class SessionEndResponse(ORMBase):
 
 class ConsultSessionSummary(ORMBase):
     session_id: str
-    started_at: datetime = Field(..., description="해당 세션의 첫 메시지 시각")
-    message_count: int = Field(..., description="총 메시지 개수")
+    ended_at: datetime = Field(..., description="해당 세션의 종료 날짜와 시각")
     first_user_question: str = Field(..., description="환자의 첫 질문")
 
 class ConsultMessage(ORMBase):

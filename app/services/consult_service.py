@@ -374,12 +374,17 @@ def end_session(user_id: int, session_id: str) -> bool:
 
 
 # 특정 환자의 전체 상담 목록 조회
-def get_consult_history(db: Session, user_id: int, skip: int = 0, limit: int = 50,) -> list[dict]:
+def get_consult_history(
+        db: Session,
+        user_id: int,
+        skip: int = 0,
+        limit: int = 50,
+) -> list[dict]:
+
     base_query = (
         db.query(
             ConsultLog.session_id.label("session_id"),
-            func.min(ConsultLog.created_at).label("started_at"),
-            func.count().label("message_count"),
+            func.max(ConsultLog.created_at).label("ended_at"),
         )
         .filter(ConsultLog.user_id == user_id)
         .group_by(ConsultLog.session_id)
@@ -414,8 +419,7 @@ def get_consult_history(db: Session, user_id: int, skip: int = 0, limit: int = 5
         result.append(
             {
                 "session_id": r.session_id,
-                "started_at": r.started_at,
-                "message_count": r.message_count,
+                "ended_at": r.ended_at,
                 "first_user_question": first_user_question,
             }
         )
