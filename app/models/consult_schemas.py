@@ -47,4 +47,4 @@ class ConsultMessage(ORMBase):
 
 class ConsultSessionSummaryRow(ORMBase):
     session_id: str
-    summary: str = Field(..., min_length=50, max_length=120, description="50~120자 telegram 스타일 상담 요약")
+    summary: str = Field(..., description="전보(telegram) 스타일 상담 요약")
