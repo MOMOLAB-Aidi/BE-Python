@@ -20,6 +20,16 @@ session_lock = threading.RLock()
 active_sessions: Dict[str, Any] = {}
 logger = logging.getLogger(__name__)
 
+# 세션 별 최대 토큰 수 (전체 대화 기준)
+MAX_SESSION_TOKENS = 8000
+
+# 토큰 경고 비율 (95% 이상이면 경고)
+TOKEN_WARN_RATIO = 0.95
+
+# 한국어 포함 여부 체크 (경고 메시지 언어 선택용)
+def is_korean(text: str) -> bool:
+    return any('가' <= ch <= '힣' for ch in text)
+
 # 에이전트의 역할과 지침 정의
 SYSTEM_PROMPT = """
 You are an AI assistant that provides concise, factual, data-driven guidance for patients undergoing peritoneal dialysis.
@@ -286,6 +296,62 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
         if chat is None:
             yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
             return
+
+    # 토큰 카운트 후 세션 자동 종료 여부 판단
+    token_count = count_session_tokens(
+        db=db,
+        user_id=user_id_verified,
+        session_id=session_id,
+        new_message=message,
+    )
+
+    logger.info(
+        f"[{session_id}] token_count={token_count}, limit={MAX_SESSION_TOKENS}"
+    )
+
+    try:
+        if token_count:
+            ratio = token_count / MAX_SESSION_TOKENS
+
+            # 토큰 한도 초과 → 세션 자동 종료 + 종료 안내
+            if token_count > MAX_SESSION_TOKENS:
+                end_session(user_id_verified, session_id)
+                logger.info(
+                    f"[{session_id}] 토큰 한도 초과로 세션 자동 종료 "
+                    f"(tokens={token_count}, limit={MAX_SESSION_TOKENS})"
+                )
+
+                if is_korean(message):
+                    end_msg = (
+                        "이번 상담 세션의 대화 길이가 충분히 길어져서 자동으로 종료되었어요. "
+                        "새 상담을 시작해서 이어서 질문해 주세요."
+                    )
+                else:
+                    end_msg = (
+                        "This consultation session has reached the maximum context length "
+                        "and was automatically closed. Please start a new session to continue."
+                    )
+
+                yield "[TOKEN_END]" + end_msg
+                return
+
+            # 토큰 95% 이상 → 경고 메시지를 먼저 한 번 보내고 계속 진행
+            elif ratio >= TOKEN_WARN_RATIO:
+                if is_korean(message):
+                    warn_msg = (
+                        "이번 상담 세션의 대화 길이가 거의 가득 찼어요. "
+                        "다음 몇 번의 답변 후 자동으로 상담이 종료될 수 있어요."
+                    )
+                else:
+                    warn_msg = (
+                        "This consultation session is nearing the maximum length. "
+                        "After a few more replies, a new session may start automatically."
+                    )
+
+                yield "[TOKEN_WARN]" + warn_msg
+
+    except Exception as e:
+        logger.error(f"[{session_id}] 토큰 한도 체크 중 오류: {e}", exc_info=True)
 
     # DB 트랜잭션 시작 (로그 저장을 위해 사용)
     full_response_text = ""
@@ -652,3 +718,66 @@ def summarize_consult_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="상담 요약 저장 중 오류가 발생했습니다.",
         ) from e
+
+
+# 해당 세션의 전체 대화를 기준으로 LLM 토큰 수를 계산
+def count_session_tokens(
+    db: Session,
+    user_id: int,
+    session_id: str,
+    new_message: str,
+) -> int:
+
+    if client is None:
+        return 0
+
+    try:
+        # 이 세션의 전체 대화 로그 가져오기
+        logs = (
+            db.query(ConsultLog)
+            .filter(
+                ConsultLog.user_id == user_id,
+                ConsultLog.session_id == session_id,
+            )
+            .order_by(ConsultLog.created_at.asc())
+            .all()
+        )
+
+        # role: content 형태로 묶기
+        conversation_lines = []
+        for log in logs:
+            role_str = (
+                log.role.value if hasattr(log.role, "value") else str(log.role)
+            )
+            conversation_lines.append(f"{role_str}: {log.content}")
+
+        # 이번에 들어온 사용자 질문 추가
+        conversation_lines.append(f"USER: {new_message}")
+
+        conversation_text = "\n".join(conversation_lines)
+
+        # Gemini 토큰 카운트 API 호출
+        resp = client.models.count_tokens(
+            model="gemini-2.5-flash",
+            contents=conversation_text,
+        )
+
+        # SDK 버전에 따라 속성이 다를 수 있어서 방어적으로 처리
+        total_tokens = getattr(resp, "total_tokens", None)
+        if total_tokens is None and hasattr(resp, "usage_metadata"):
+            total_tokens = getattr(resp.usage_metadata, "total_token_count", None)
+
+        if total_tokens is None:
+            logger.warning(
+                f"[{session_id}] 토큰 카운트 응답에서 total_tokens를 찾지 못했습니다. resp={resp!r}"
+            )
+            return 0
+
+        return int(total_tokens)
+
+    except Exception as e:
+        logger.error(
+            f"[{session_id}] 토큰 카운트 중 오류 발생: {e}",
+            exc_info=True,
+        )
+        return 0

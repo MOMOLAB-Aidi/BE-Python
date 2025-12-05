@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,11 @@ from app.api.routes import router as api_router
 import uvicorn
 
 ALLOWED_ORIGINS = settings.ALLOWED_ORIGINS
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+)
 
 # CORS
 middleware = [
