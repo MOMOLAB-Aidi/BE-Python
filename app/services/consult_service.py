@@ -348,7 +348,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
                         "After a few more replies, a new session may start automatically."
                     )
 
-                yield "[TOKEN_WARN]" + warn_msg
+                yield "[TOKEN_WARN]\n" + warn_msg
 
     except Exception as e:
         logger.error(f"[{session_id}] 토큰 한도 체크 중 오류: {e}", exc_info=True)
