@@ -574,7 +574,7 @@ You are an AI assistant that summarizes one completed consultation session for a
 - Language MUST match the main language of the conversation.
 - Output MUST be: 
   - a single sentence
-  - 50–120 characters ideally (minimum 50)
+  - 50–100 characters ideally (minimum 50)
   - no greetings, no politeness, no emoji
   - no quotation marks, no bullet points, no line breaks
 - Use comma-based, telegraphic style typical of Korean telegram summaries.
@@ -643,7 +643,7 @@ def summarize_consult_session(
             "- Compress all patient questions into 2–3 short topic phrases (Examples. 'weight gain and swelling', 'blood pressure control').\n"
             "- Compress the agent's answers into 1–2 short phrases describing the main guidance.\n"
             "- Use the main language of the conversation (Korean or English).\n"
-            "- The summary MUST be at least 50 characters long and ideally within 100–120 characters in total,\n"
+            "- The summary MUST be at least 50 characters long and ideally within 60~100 characters in total,\n"
             "  with no greetings, no politeness, no emoji, no quotation marks, no bullet points, no line breaks.\n"
             "- Prefer dense, comma-separated phrases rather than a polite full sentence.\n\n"
             "--- Conversation ---\n"
@@ -666,7 +666,7 @@ def summarize_consult_session(
             try:
                 refine_prompt = (
                     "The following summary is too short. Rewrite it as ONE telegram-style line "
-                    "with at least 50 and at most about 120 characters, keeping the same meaning.\n"
+                    "with at least 50 and at most about 100 characters, keeping the same meaning.\n"
                     "- No greetings, no politeness, no emoji, no quotation marks, no bullet points, no line breaks.\n"
                     "- Use compact, comma-separated phrases instead of a polite full sentence.\n\n"
                     f"Original summary:\n{summary_text}"
