@@ -12,6 +12,7 @@ from app.db_models import Record, ConsultSummary
 from app.db_models.consult_log import ConsultLog, ConsultRoleEnum
 from app.db_models.kdigo_chunk import KdigoChunk, KDIGO_EMBED_DIM
 from app.models.consult_schemas import MessageRole
+from app.utils.language_utils import is_korean
 
 session_lock = threading.RLock()
 
@@ -19,6 +20,12 @@ session_lock = threading.RLock()
 # 서버가 실행되는 동안 대화 이력을 임시로 저장
 active_sessions: Dict[str, Any] = {}
 logger = logging.getLogger(__name__)
+
+# 세션 별 최대 토큰 수 (전체 대화 기준)
+MAX_SESSION_TOKENS = 8000
+
+# 토큰 경고 비율 (95% 이상이면 경고)
+TOKEN_WARN_RATIO = 0.95
 
 # 에이전트의 역할과 지침 정의
 SYSTEM_PROMPT = """
@@ -90,6 +97,7 @@ def start_new_session(user_id: int, session_id: str) -> bool:
                 active_sessions[session_id] = {
                     "user_id": user_id,
                     "chat": chat,
+                    "token_count": 0,
                 }
                 return True
             except Exception as e:
@@ -280,68 +288,118 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             yield "권한이 없습니다."
             return
 
-        # 필요한 데이터를 미리 복사
         chat = session_data["chat"]
         user_id_verified = session_data["user_id"]
         if chat is None:
             yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
             return
 
-    # DB 트랜잭션 시작 (로그 저장을 위해 사용)
+    refined_query = refine_query(db, session_id, message)
+    kdigo_context = kdigo_vector_search(refined_query, db)
+    patient_records_text = get_patient_records_summary(db, user_id_verified)
+
+    full_message = (
+        f"--- 환자 최신 기록 ---\n"
+        f"{patient_records_text}\n"
+        f"\n{kdigo_context}\n"
+        f"\n--- 환자 질문 ---\n"
+        f"{message}"
+    )
+
+    # 토큰 수 계산 (이번 턴 full_message 기준 + 세션 누적)
+    token_count = count_session_tokens(
+        session_id=session_id,
+        full_prompt=full_message,
+    )
+
+    logger.info(
+        f"[{session_id}] token_count={token_count}, limit={MAX_SESSION_TOKENS}"
+    )
+
+    # 토큰 기준으로 WARN/END 판단
+    try:
+        if token_count is not None and token_count > 0:
+            ratio = token_count / MAX_SESSION_TOKENS
+
+            # 1. 한도 초과 → 세션 종료 안내
+            if token_count > MAX_SESSION_TOKENS:
+
+                end_session(user_id_verified, session_id)
+                logger.info(
+                    f"[{session_id}] 토큰 한도 초과로 세션 자동 종료 "
+                    f"(tokens={token_count}, limit={MAX_SESSION_TOKENS})"
+                )
+
+                if is_korean(message):
+                    end_msg = (
+                        "이번 상담 세션의 대화 길이가 충분히 길어져서 자동으로 종료되었어요. "
+                        "새 상담을 시작해서 이어서 질문해 주세요."
+                    )
+                else:
+                    end_msg = (
+                        "This consultation session has reached the maximum context length "
+                        "and was automatically closed. Please start a new session to continue."
+                    )
+
+                yield "[TOKEN_END]" + end_msg + "\n"
+                return
+
+            # 2. 95% 이상 → WARN chunk만 먼저 보내고 계속 진행
+            elif ratio >= TOKEN_WARN_RATIO:
+                if is_korean(message):
+                    warn_msg = (
+                        "이번 상담 세션의 대화 길이가 거의 가득 찼어요. "
+                        "다음 몇 번의 답변 후 자동으로 상담이 종료될 수 있어요."
+                    )
+                else:
+                    warn_msg = (
+                        "This consultation session is nearing the maximum length. "
+                        "After a few more replies, a new session may start automatically."
+                    )
+
+                yield "[TOKEN_WARN]" + warn_msg + "\n"
+
+    except Exception as e:
+        logger.error(f"[{session_id}] 토큰 한도 체크 중 오류: {e}", exc_info=True)
+
+    # USER/AGENT 로그 + 스트리밍 진행
     full_response_text = ""
     agent_log = None
     streaming_completed = False
 
-    # 정상 종료 -> agent_log.content = full_response_text
-    # 중간에 끊김 -> finally에서 "[스트리밍 중단 - 부분 응답]"이라도 채워서 저장
+    # USER/AGENT 로그 저장
+    user_log = ConsultLog(
+        user_id=user_id_verified,
+        session_id=session_id,
+        role=ConsultRoleEnum.USER,
+        content=message
+    )
+    db.add(user_log)
+
+    agent_log = ConsultLog(
+        user_id=user_id_verified,
+        session_id=session_id,
+        role=ConsultRoleEnum.AGENT,
+        content=""
+    )
+    db.add(agent_log)
+    db.commit()
+
     try:
-        # 1. 쿼리 정제 및 KDIGO 검색 (RAG)
-        refined_query = refine_query(db, session_id, message)
-        kdigo_context = kdigo_vector_search(refined_query, db)
-        patient_records_text = get_patient_records_summary(db, user_id_verified)
-
-        # 2. AI 모델에 전달할 최종 RAG 프롬프트 구성
-        full_message = (
-            f"--- 환자 최신 기록 ---\n"
-            f"{patient_records_text}\n"
-            f"\n{kdigo_context}\n"  # KDIGO 검색 결과 삽입
-            f"\n--- 환자 질문 ---\n"
-            f"{message}"
-        )
-
-        # 3. 사용자 질문 DB 로그 저장
-        user_log = ConsultLog(
-            user_id=user_id_verified,
-            session_id=session_id,
-            role=ConsultRoleEnum.USER,
-            content=message
-        )
-        db.add(user_log)
-        agent_log = ConsultLog(
-            user_id=user_id_verified,
-            session_id=session_id,
-            role=ConsultRoleEnum.AGENT,
-            content=""  # 비어있는 상태로 생성(스트리밍 도중 클라이언트가 끊겨도 최소한 "이 턴에 응답을 시도했다"는 행 남기기)
-        )
-        db.add(agent_log)
-        db.commit() # 스트리밍 완료 후 한 번에 커밋
-
-        # 4. 스트리밍 시작
+        # 스트리밍 시작
         stream = chat.send_message_stream(full_message)
 
-        # 5. 스트림을 통해 응답을 실시간으로 사용자에게 전달
         for chunk in stream:
             chunk_text = chunk.text
             if not chunk_text:
                 continue
 
             full_response_text += chunk_text
-            yield chunk_text  # 실시간 응답 전송
+            yield chunk_text
 
         streaming_completed = True
 
     except Exception as e:
-        db.rollback()
         logger.error(f"[{session_id}] 메시지 처리 중 오류 발생: {e}", exc_info=True)
         yield "메시지 전송 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
     finally:
@@ -350,7 +408,11 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
                 if streaming_completed:
                     agent_log.content = full_response_text
                 else:
-                    agent_log.content = full_response_text if full_response_text else "[스트리밍 중단 — 부분 응답]"
+                    agent_log.content = (
+                        full_response_text
+                        if full_response_text
+                        else "[스트리밍 중단 — 부분 응답]"
+                    )
                 db.commit()
             except Exception as e:
                 logger.error(f"[{session_id}] agent_log 저장 실패: {e}", exc_info=True)
@@ -652,3 +714,54 @@ def summarize_consult_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="상담 요약 저장 중 오류가 발생했습니다.",
         ) from e
+
+
+# 이번 턴에 LLM에 전달할 전체 프롬프트(이번 턴에 보내는 RAG 프롬프트)의 토큰 수를 계산하고,
+# 세션별 누적 토큰(active_sessions[session_id]["token_count"])에 더해 반환
+def count_session_tokens(
+    session_id: str,
+    full_prompt: str,
+) -> int:
+
+    if client is None:
+        return 0
+
+    try:
+        # 이번 턴에 보낼 프롬프트에 대한 토큰 수
+        resp = client.models.count_tokens(
+            model="gemini-2.5-flash",
+            contents=full_prompt,
+        )
+
+        new_tokens = getattr(resp, "total_tokens", None)
+        if new_tokens is None and hasattr(resp, "usage_metadata"):
+            new_tokens = getattr(resp.usage_metadata, "total_token_count", None)
+
+        if new_tokens is None:
+            logger.error(
+                f"[{session_id}] 토큰 카운트 응답에서 total_tokens를 찾지 못했습니다. resp={resp!r}"
+            )
+            raise ValueError(f"토큰 카운트 실패: session_id={session_id}")
+
+    except Exception as e:
+        logger.error(
+            f"[{session_id}] 토큰 카운트 중 오류 발생: {e}",
+            exc_info=True,
+        )
+        # 오류 시에는 기존 누적 토큰만 그대로 반환
+        with session_lock:
+            session_data = active_sessions.get(session_id) or {}
+            return int(session_data.get("token_count", 0))
+
+    # 정상적으로 new_tokens를 구한 경우 → 세션 캐시에 누적
+    with session_lock:
+        session_data = active_sessions.get(session_id)
+        if session_data is None:
+            logger.warning(f"[{session_id}] 세션이 active_sessions에 존재하지 않습니다.")
+            return int(new_tokens)
+
+        prev_tokens = int(session_data.get("token_count", 0))
+        total = prev_tokens + int(new_tokens)
+        session_data["token_count"] = total
+
+    return total
