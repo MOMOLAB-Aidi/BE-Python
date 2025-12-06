@@ -28,7 +28,12 @@ TOKEN_WARN_RATIO = 0.95
 
 # 한국어 포함 여부 체크 (경고 메시지 언어 선택용)
 def is_korean(text: str) -> bool:
-    return any('가' <= ch <= '힣' for ch in text)
+    return any(
+        '가' <= ch <= '힣' or
+        'ㄱ' <= ch <= 'ㅎ' or
+        'ㅏ' <= ch <= 'ㅣ'
+        for ch in text
+    )
 
 # 에이전트의 역할과 지침 정의
 SYSTEM_PROMPT = """
@@ -100,6 +105,7 @@ def start_new_session(user_id: int, session_id: str) -> bool:
                 active_sessions[session_id] = {
                     "user_id": user_id,
                     "chat": chat,
+                    "token_count": 0,
                 }
                 return True
             except Exception as e:
@@ -299,8 +305,6 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
 
     # 토큰 카운트 후 세션 자동 종료 여부 판단
     token_count = count_session_tokens(
-        db=db,
-        user_id=user_id_verified,
         session_id=session_id,
         new_message=message,
     )
@@ -332,7 +336,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
                         "and was automatically closed. Please start a new session to continue."
                     )
 
-                yield "[TOKEN_END]" + end_msg
+                yield "[TOKEN_END]" + end_msg  + "\n"
                 return
 
             # 토큰 95% 이상 → 경고 메시지를 먼저 한 번 보내고 계속 진행
@@ -348,7 +352,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
                         "After a few more replies, a new session may start automatically."
                     )
 
-                yield "[TOKEN_WARN]\n" + warn_msg
+                yield "[TOKEN_WARN]" + warn_msg + "\n"
 
     except Exception as e:
         logger.error(f"[{session_id}] 토큰 한도 체크 중 오류: {e}", exc_info=True)
@@ -721,9 +725,8 @@ def summarize_consult_session(
 
 
 # 해당 세션의 전체 대화를 기준으로 LLM 토큰 수를 계산
+# active_sessions[session_id]["token_count"]에 누적 + 이번 turn(new_message)만 카운트
 def count_session_tokens(
-    db: Session,
-    user_id: int,
     session_id: str,
     new_message: str,
 ) -> int:
@@ -731,53 +734,53 @@ def count_session_tokens(
     if client is None:
         return 0
 
+    # 1. 이전까지의 누적 토큰 수 읽기
+    with session_lock:
+        session_data = active_sessions.get(session_id)
+        if session_data is None:
+            # 세션이 없으면 토큰도 의미 없음
+            return 0
+        prev_tokens = session_data.get("token_count", 0)
+
+    # 2. 이번 turn(사용자 메시지)만 가지고 토큰 수 계산
     try:
-        # 이 세션의 전체 대화 로그 가져오기
-        logs = (
-            db.query(ConsultLog)
-            .filter(
-                ConsultLog.user_id == user_id,
-                ConsultLog.session_id == session_id,
-            )
-            .order_by(ConsultLog.created_at.asc())
-            .all()
-        )
-
-        # role: content 형태로 묶기
-        conversation_lines = []
-        for log in logs:
-            role_str = (
-                log.role.value if hasattr(log.role, "value") else str(log.role)
-            )
-            conversation_lines.append(f"{role_str}: {log.content}")
-
-        # 이번에 들어온 사용자 질문 추가
-        conversation_lines.append(f"USER: {new_message}")
-
-        conversation_text = "\n".join(conversation_lines)
-
-        # Gemini 토큰 카운트 API 호출
         resp = client.models.count_tokens(
             model="gemini-2.5-flash",
-            contents=conversation_text,
+            contents=new_message,
         )
 
-        # SDK 버전에 따라 속성이 다를 수 있어서 방어적으로 처리
-        total_tokens = getattr(resp, "total_tokens", None)
-        if total_tokens is None and hasattr(resp, "usage_metadata"):
-            total_tokens = getattr(resp.usage_metadata, "total_token_count", None)
+        # 3. SDK 버전에 따라 total_tokens 위치가 다를 수 있어 방어적으로 처리
+        total_tokens_for_turn = getattr(resp, "total_tokens", None)
+        if total_tokens_for_turn is None and hasattr(resp, "usage_metadata"):
+            total_tokens_for_turn = getattr(
+                resp.usage_metadata,
+                "total_token_count",
+                None,
+            )
 
-        if total_tokens is None:
+        if total_tokens_for_turn is None:
             logger.warning(
                 f"[{session_id}] 토큰 카운트 응답에서 total_tokens를 찾지 못했습니다. resp={resp!r}"
             )
-            return 0
+            # 새로 계산 못 했으면 이전 값 그대로 반환
+            return prev_tokens
 
-        return int(total_tokens)
+        total_tokens_for_turn = int(total_tokens_for_turn)
+
+        # 4. 누적 토큰 = 이전 + 이번 턴
+        new_total = prev_tokens + total_tokens_for_turn
+
+        # 5. active_sessions에 다시 저장
+        with session_lock:
+            if session_id in active_sessions:
+                active_sessions[session_id]["token_count"] = new_total
+
+        return new_total
 
     except Exception as e:
         logger.error(
             f"[{session_id}] 토큰 카운트 중 오류 발생: {e}",
             exc_info=True,
         )
-        return 0
+        # 오류 시에는 이전 값 유지
+        return prev_tokens
