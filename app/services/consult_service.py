@@ -184,7 +184,7 @@ def get_session_history(db: Session, session_id: str) -> str:
     history_logs = (
         db.query(ConsultLog)
         .filter(ConsultLog.session_id == session_id)
-        .order_by(desc(ConsultLog.created_at))
+        .order_by(desc(ConsultLog.id))
         .limit(3)
         .all()
     )
@@ -482,7 +482,7 @@ def get_consult_history(
                 ConsultLog.session_id == r.session_id,
                 ConsultLog.role == MessageRole.USER,
             )
-            .order_by(ConsultLog.created_at.asc())
+            .order_by(ConsultLog.id.asc())
             .first()
         )
 
@@ -511,7 +511,7 @@ def get_consult_history_detail(
             ConsultLog.user_id == user_id,
             ConsultLog.session_id == session_id,
         )
-        .order_by(ConsultLog.created_at.asc())
+        .order_by(ConsultLog.id.asc())
         .all()
     )
     return logs
@@ -615,7 +615,7 @@ def summarize_consult_session(
             ConsultLog.user_id == user_id,
             ConsultLog.session_id == session_id,
         )
-        .order_by(ConsultLog.created_at.asc())
+        .order_by(ConsultLog.id.asc())
         .all()
     )
 
