@@ -296,29 +296,42 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             yield "권한이 없습니다."
             return
 
-        # 필요한 데이터를 미리 복사
         chat = session_data["chat"]
         user_id_verified = session_data["user_id"]
         if chat is None:
             yield "세션이 올바르게 초기화되지 않았습니다. 다시 세션을 시작해주세요."
             return
 
-    # 토큰 카운트 후 세션 자동 종료 여부 판단
+    refined_query = refine_query(db, session_id, message)
+    kdigo_context = kdigo_vector_search(refined_query, db)
+    patient_records_text = get_patient_records_summary(db, user_id_verified)
+
+    full_message = (
+        f"--- 환자 최신 기록 ---\n"
+        f"{patient_records_text}\n"
+        f"\n{kdigo_context}\n"
+        f"\n--- 환자 질문 ---\n"
+        f"{message}"
+    )
+
+    # 토큰 수 계산 (이번 턴 full_message 기준 + 세션 누적)
     token_count = count_session_tokens(
         session_id=session_id,
-        new_message=message,
+        full_prompt=full_message,
     )
 
     logger.info(
         f"[{session_id}] token_count={token_count}, limit={MAX_SESSION_TOKENS}"
     )
 
+    # 토큰 기준으로 WARN/END 판단
     try:
         if token_count:
             ratio = token_count / MAX_SESSION_TOKENS
 
-            # 토큰 한도 초과 → 세션 자동 종료 + 종료 안내
+            # 1. 한도 초과 → 세션 종료 안내
             if token_count > MAX_SESSION_TOKENS:
+
                 end_session(user_id_verified, session_id)
                 logger.info(
                     f"[{session_id}] 토큰 한도 초과로 세션 자동 종료 "
@@ -336,10 +349,10 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
                         "and was automatically closed. Please start a new session to continue."
                     )
 
-                yield "[TOKEN_END]" + end_msg  + "\n"
+                yield "[TOKEN_END]" + end_msg + "\n"
                 return
 
-            # 토큰 95% 이상 → 경고 메시지를 먼저 한 번 보내고 계속 진행
+            # 2. 95% 이상 → WARN chunk만 먼저 보내고 계속 진행
             elif ratio >= TOKEN_WARN_RATIO:
                 if is_korean(message):
                     warn_msg = (
@@ -357,29 +370,13 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
     except Exception as e:
         logger.error(f"[{session_id}] 토큰 한도 체크 중 오류: {e}", exc_info=True)
 
-    # DB 트랜잭션 시작 (로그 저장을 위해 사용)
+    # USER/AGENT 로그 + 스트리밍 진행
     full_response_text = ""
     agent_log = None
     streaming_completed = False
 
-    # 정상 종료 -> agent_log.content = full_response_text
-    # 중간에 끊김 -> finally에서 "[스트리밍 중단 - 부분 응답]"이라도 채워서 저장
     try:
-        # 1. 쿼리 정제 및 KDIGO 검색 (RAG)
-        refined_query = refine_query(db, session_id, message)
-        kdigo_context = kdigo_vector_search(refined_query, db)
-        patient_records_text = get_patient_records_summary(db, user_id_verified)
-
-        # 2. AI 모델에 전달할 최종 RAG 프롬프트 구성
-        full_message = (
-            f"--- 환자 최신 기록 ---\n"
-            f"{patient_records_text}\n"
-            f"\n{kdigo_context}\n"  # KDIGO 검색 결과 삽입
-            f"\n--- 환자 질문 ---\n"
-            f"{message}"
-        )
-
-        # 3. 사용자 질문 DB 로그 저장
+        # USER/AGENT 로그 저장
         user_log = ConsultLog(
             user_id=user_id_verified,
             session_id=session_id,
@@ -391,22 +388,21 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
             user_id=user_id_verified,
             session_id=session_id,
             role=ConsultRoleEnum.AGENT,
-            content=""  # 비어있는 상태로 생성(스트리밍 도중 클라이언트가 끊겨도 최소한 "이 턴에 응답을 시도했다"는 행 남기기)
+            content=""
         )
         db.add(agent_log)
-        db.commit() # 스트리밍 완료 후 한 번에 커밋
+        db.commit()
 
-        # 4. 스트리밍 시작
+        # 스트리밍 시작
         stream = chat.send_message_stream(full_message)
 
-        # 5. 스트림을 통해 응답을 실시간으로 사용자에게 전달
         for chunk in stream:
             chunk_text = chunk.text
             if not chunk_text:
                 continue
 
             full_response_text += chunk_text
-            yield chunk_text  # 실시간 응답 전송
+            yield chunk_text
 
         streaming_completed = True
 
@@ -724,63 +720,49 @@ def summarize_consult_session(
         ) from e
 
 
-# 해당 세션의 전체 대화를 기준으로 LLM 토큰 수를 계산
-# active_sessions[session_id]["token_count"]에 누적 + 이번 turn(new_message)만 카운트
+# 이번 턴에 LLM에 전달할 전체 프롬프트의 토큰 수를 계산하고,
+# 세션별 누적 토큰(active_sessions[session_id]["token_count"])에 더해 반환
 def count_session_tokens(
     session_id: str,
-    new_message: str,
+    full_prompt: str,
 ) -> int:
 
     if client is None:
         return 0
 
-    # 1. 이전까지의 누적 토큰 수 읽기
-    with session_lock:
-        session_data = active_sessions.get(session_id)
-        if session_data is None:
-            # 세션이 없으면 토큰도 의미 없음
-            return 0
-        prev_tokens = session_data.get("token_count", 0)
-
-    # 2. 이번 turn(사용자 메시지)만 가지고 토큰 수 계산
     try:
+        # 이번 턴에 보낼 프롬프트에 대한 토큰 수
         resp = client.models.count_tokens(
             model="gemini-2.5-flash",
-            contents=new_message,
+            contents=full_prompt,
         )
 
-        # 3. SDK 버전에 따라 total_tokens 위치가 다를 수 있어 방어적으로 처리
-        total_tokens_for_turn = getattr(resp, "total_tokens", None)
-        if total_tokens_for_turn is None and hasattr(resp, "usage_metadata"):
-            total_tokens_for_turn = getattr(
-                resp.usage_metadata,
-                "total_token_count",
-                None,
-            )
+        new_tokens = getattr(resp, "total_tokens", None)
+        if new_tokens is None and hasattr(resp, "usage_metadata"):
+            new_tokens = getattr(resp.usage_metadata, "total_token_count", None)
 
-        if total_tokens_for_turn is None:
+        if new_tokens is None:
             logger.warning(
                 f"[{session_id}] 토큰 카운트 응답에서 total_tokens를 찾지 못했습니다. resp={resp!r}"
             )
-            # 새로 계산 못 했으면 이전 값 그대로 반환
-            return prev_tokens
-
-        total_tokens_for_turn = int(total_tokens_for_turn)
-
-        # 4. 누적 토큰 = 이전 + 이번 턴
-        new_total = prev_tokens + total_tokens_for_turn
-
-        # 5. active_sessions에 다시 저장
-        with session_lock:
-            if session_id in active_sessions:
-                active_sessions[session_id]["token_count"] = new_total
-
-        return new_total
+            new_tokens = 0
 
     except Exception as e:
         logger.error(
             f"[{session_id}] 토큰 카운트 중 오류 발생: {e}",
             exc_info=True,
         )
-        # 오류 시에는 이전 값 유지
-        return prev_tokens
+        # 오류 시에는 기존 누적 토큰만 그대로 반환
+        with session_lock:
+            session_data = active_sessions.get(session_id) or {}
+            return int(session_data.get("token_count", 0))
+
+    # 정상적으로 new_tokens를 구한 경우 → 세션 캐시에 누적
+    with session_lock:
+        session_data = active_sessions.get(session_id) or {}
+        prev_tokens = int(session_data.get("token_count", 0))
+        total = prev_tokens + int(new_tokens)
+        session_data["token_count"] = total
+        active_sessions[session_id] = session_data
+
+    return total
