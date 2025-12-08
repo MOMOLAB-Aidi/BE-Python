@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 # 세션 별 최대 토큰 수 (전체 대화 기준)
 MAX_SESSION_TOKENS = 8000
 
-# 토큰 경고 비율 (95% 이상이면 경고)
-TOKEN_WARN_RATIO = 0.95
+# 토큰 경고 비율 (90% 이상이면 경고)
+TOKEN_WARN_RATIO = 0.9
 
 # 에이전트의 역할과 지침 정의
 SYSTEM_PROMPT = """
@@ -344,7 +344,7 @@ def get_agent_response_stream(db: Session, user_id: int, session_id: str, messag
                 yield "[TOKEN_END]" + end_msg + "\n"
                 return
 
-            # 2. 95% 이상 → WARN chunk만 먼저 보내고 계속 진행
+            # 2. 90% 이상 → WARN chunk만 먼저 보내고 계속 진행
             elif ratio >= TOKEN_WARN_RATIO:
                 if is_korean(message):
                     warn_msg = (
