@@ -501,14 +501,20 @@ def get_today_exchange_summary(
         return TodayExchangeSummary(
             has_record=False,
             exchange_count=0,
-            total_uf=0
+            total_uf=0,
+            record_uf_sum=0
         )
+
+    exchanges = rec.exchanges or [] # 오늘 기록이 있는 경우
 
     exchange_count = len(rec.exchanges or [])
     total_uf = rec.total_uf or 0
+
+    record_uf_sum = sum((e.uf or 0) for e in exchanges)
 
     return TodayExchangeSummary(
         has_record=True,
         exchange_count=exchange_count,
         total_uf=total_uf,
+        record_uf_sum=record_uf_sum,
     )
