@@ -178,3 +178,4 @@ class TodayExchangeSummary(BaseModel):
     has_record: bool = Field(..., description="오늘 날짜에 복막투석 기록이 존재하는지의 여부", examples=[True])
     exchange_count: int = Field(..., ge=0, le=5, description="오늘 완료된 교환 회차 개수", examples=[4])
     total_uf: int = Field(..., ge=-2500, le=2500, description="오늘의 제수량 합계 (단위: g)", examples=[500])
+    record_uf_sum: int = Field(..., ge=-2500, le=2500, description="회차별 제수량 합계 (단위: g)", examples=[500])
