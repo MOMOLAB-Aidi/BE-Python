@@ -16,7 +16,7 @@ class Last7DaysAverageData(ORMBase):
         }
     )
     weight_avg: Optional[float] = Field(None, description="최근 7일 평균 체중")
-    total_uf_avg: Optional[float] = Field(None, description="최근 7일 제수량 합계")
+    total_uf_avg: Optional[float] = Field(None, description="최근 7일 평균 제수량 합계")
 
 class Last7DaysAverageResponse(ORMBase):
     model_config = ConfigDict(
@@ -33,7 +33,7 @@ class Last7DaysAverageResponse(ORMBase):
     )
     start_date: date = Field(..., description="최근 7일 범위 시작일")
     end_date: date = Field(..., description="최근 7일 범위 종료일")
-    data: Last7DaysAverageData = Field(..., description="최근 7일 데이터 평균 값")
+    data: Last7DaysAverageData = Field(..., description="최근 7일 평균 데이터 값")
 
 
 class WeightUfPoint(ORMBase):
