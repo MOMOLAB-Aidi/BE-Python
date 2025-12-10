@@ -1,12 +1,12 @@
 import hashlib
 import logging
-from typing import List, Optional
+from typing import List
 
 from fastapi import Depends, HTTPException, APIRouter, UploadFile, File, Response, status, Query
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime, date
+from datetime import datetime
 
 from app.core.db import get_db
 
@@ -16,44 +16,15 @@ from app.db_models.user import User
 from app.core.auth import get_current_active_user as AuthTokenDep
 from app.models.record_schemas import \
     RecordCreate, RecordPatch, TodayExchangeSummary
-from app.models.stats_schemas import WeeklyAverageResponse, WeeklyAverageData
 from app.services.ocr_service import upload_to_gcs, ocr_bytes_to_pdrecord_json, delete_from_gcs, OcrError, \
     download_from_gcs
-from app.services.record_service import get_weekly_average_records, rec_to_dict, \
+from app.services.record_service import rec_to_dict, \
     get_latest_records, delete_record, \
     create_record_with_exchanges, update_record_with_exchanges, get_today_exchange_summary
 
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-@router.get("/api/v1/records/weekly-average",
-            tags=["복막투석기록"],
-            summary="주간 기록 데이터 평균 조회",
-            description="특정 날짜가 포함된 주의 (월요일 ~ 일요일) 환자 기록 데이터의 평균을 계산하여 반환합니다.",
-            response_model=WeeklyAverageResponse,
-            )
-def get_weekly_average(
-        current_user: User = Depends(AuthTokenDep),
-        target_date: Optional[date] = Query(None, description="지정하지 않으면 오늘 날짜 기준 주간을 사용합니다."), db: Session = Depends(get_db)
-):
-    try:
-        effective_date = target_date or date.today()
-        avg_data, start_date, end_date = get_weekly_average_records(db, current_user.id, effective_date)
-
-        # Pydantic 모델로 변환하여 응답
-        return WeeklyAverageResponse(
-            start_date=start_date,
-            end_date=end_date,
-            data=WeeklyAverageData(**avg_data)
-        )
-
-    except SQLAlchemyError as e:
-        logger.exception("주간 평균 계산 중 DB 오류 발생")
-        raise HTTPException(status_code=500, detail="주간 평균 계산 중 서버 오류가 발생했습니다.") from e
-    except Exception as e:
-        logger.exception("주간 평균 계산 중 예상치 못한 오류 발생")
-        raise HTTPException(status_code=500, detail="주간 평균 계산 중 서버 오류가 발생했습니다.") from e
 
 
 @router.get(
