@@ -5,7 +5,8 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.db_models import Record
-from app.models.stats_schemas import WeightUfPoint, BloodPressureSummary, Last7DaysStats
+from app.models.stats_schemas import WeightUfPoint, BloodPressureSummary, Last7DaysStats, Last7DaysAverageResponse, \
+    Last7DaysAverageData
 
 
 # 최근 7일 동안의 일별 체중 & 일별 제수량 추이 조회
@@ -93,4 +94,50 @@ def get_weight_uf_last_7_days(
     return Last7DaysStats(
         points=points,
         bp_summary=bp_summary,
+    )
+
+
+# 최근 7일 동안의 기록 데이터의 평균을 계산
+def get_last_7_days_average_records(
+    db: Session,
+    user_id: int,
+) -> Last7DaysAverageResponse:
+    today = date.today()
+    start_date = today - timedelta(days=6)  # 오늘 포함 최근 7일
+
+    # 1. 최근 7일 사이의 기록만 한 번에 가져오기
+    rows = (
+        db.query(Record)
+        .filter(
+            and_(
+                Record.user_id == user_id,
+                Record.record_date >= start_date,
+                Record.record_date <= today,
+            )
+        )
+        .order_by(Record.record_date.asc())
+        .all()
+    )
+
+    weight_values = [r.weight for r in rows if r.weight is not None]
+    uf_values = [r.total_uf for r in rows if r.total_uf is not None]
+
+    weight_avg = (
+        sum(weight_values) / len(weight_values)
+        if weight_values else None
+    )
+    total_uf_avg = (
+        sum(uf_values) / len(uf_values)
+        if uf_values else None
+    )
+
+    data = Last7DaysAverageData(
+        weight_avg=weight_avg,
+        total_uf_avg=total_uf_avg,
+    )
+
+    return Last7DaysAverageResponse(
+        start_date=start_date,
+        end_date=today,
+        data=data,
     )

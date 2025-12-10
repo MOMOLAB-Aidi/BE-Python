@@ -1,11 +1,10 @@
 import hashlib
 import re
-from datetime import time as dtime, date, timedelta
-from typing import Dict, Any, Optional, List, Tuple
+from datetime import time as dtime, date
+from typing import Dict, Any, Optional, List
 from datetime import date as _date
 
 from fastapi import HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db_models.record import Record
@@ -304,47 +303,6 @@ def delete_record(db: Session, rec_id: int, user_id: int) -> None:
     # record 삭제
     db.delete(record)
     db.commit()
-
-
-# 기준 날짜를 포함하는 주의 (월요일 ~ 일요일) 환자 기록 데이터의 평균을 계산
-def get_weekly_average_records(
-    db: Session,
-    user_id: int,
-    target_date: date
-) -> Tuple[Dict[str, Optional[float]], date, date]:
-
-    # 주간 시작일(월요일) 및 종료일(일요일) 계산
-    # target_date.weekday()는 월요일(0) ~ 일요일(6)
-    days_to_monday = target_date.weekday()
-    start_date = target_date - timedelta(days=days_to_monday)
-    end_date = start_date + timedelta(days=6)
-
-    # 데이터베이스 쿼리 및 평균 계산
-    avg_results = db.query(
-        func.avg(Record.weight).label('weight_avg'),
-        func.avg(Record.total_uf).label('total_uf_avg')
-    ).filter(
-        Record.user_id == user_id,
-        Record.record_date.between(start_date, end_date)
-    ).first()
-
-    # 초기 빈 딕셔너리 할당을 제거하고 if/else 블록에서 직접 할당을 보장
-    avg_data: Dict[str, Optional[float]]
-
-    if avg_results is not None and any(v is not None for v in avg_results):
-        # 결과에 값이 있을 경우
-        avg_data = {
-            'weight_avg': avg_results.weight_avg,
-            'total_uf_avg': avg_results.total_uf_avg
-        }
-    else:
-        # 데이터가 없는 경우
-        avg_data = {
-            'weight_avg': None,
-            'total_uf_avg': None
-        }
-
-    return avg_data, start_date, end_date
 
 
 # 공통 정보 + 회차별 정보 한 번에 생성
