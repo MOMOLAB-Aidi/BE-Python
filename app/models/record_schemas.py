@@ -179,3 +179,5 @@ class TodayExchangeSummary(BaseModel):
     exchange_count: int = Field(..., ge=0, le=5, description="오늘 완료된 교환 회차 개수", examples=[4])
     total_uf: int = Field(..., ge=-2500, le=2500, description="오늘의 제수량 합계 (단위: g)", examples=[500])
     record_uf_sum: int = Field(..., ge=-2500, le=2500, description="회차별 제수량 합계 (단위: g)", examples=[500])
+    calculated_uf_sum: int = Field(..., ge=-2500, le=2500, description="(배액량 - 주입량)으로 계산한 제수량 합계 (단위: g)", examples=[100],)
+    has_uf_mismatch: bool = Field(..., description="제수량 불일치 여부", examples=[False])

@@ -502,7 +502,8 @@ def get_today_exchange_summary(
             has_record=False,
             exchange_count=0,
             total_uf=0,
-            record_uf_sum=0
+            record_uf_sum=0,
+            has_uf_mismatch=False,
         )
 
     exchanges = rec.exchanges or [] # 오늘 기록이 있는 경우
@@ -510,11 +511,32 @@ def get_today_exchange_summary(
     exchange_count = len(rec.exchanges or [])
     total_uf = rec.total_uf or 0
 
+    # 회차별 제수량 합계
     record_uf_sum = sum((e.uf or 0) for e in exchanges)
+
+    # (배액량 - 주입량)으로 계산한 제수량 합계
+    calculated_uf_sum = 0
+    has_per_exchange_mismatch = False
+
+    for e in exchanges:
+
+        if e.drain_volume is not None and e.fill_volume is not None:
+            diff = e.drain_volume - e.fill_volume
+            calculated_uf_sum += diff
+
+            if e.uf is not None and e.uf != diff:
+                has_per_exchange_mismatch = True
+
+    has_total_mismatch = (total_uf != record_uf_sum) or (
+            record_uf_sum != calculated_uf_sum
+    )
+
+    has_uf_mismatch = has_per_exchange_mismatch or has_total_mismatch
 
     return TodayExchangeSummary(
         has_record=True,
         exchange_count=exchange_count,
         total_uf=total_uf,
         record_uf_sum=record_uf_sum,
+        has_uf_mismatch=has_uf_mismatch,
     )

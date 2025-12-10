@@ -59,8 +59,8 @@ def get_weekly_average(
 @router.get(
     "/api/v1/records/today-summary",
     tags=["복막투석기록"],
-    summary="오늘 날짜 교환 요약",
-    description="오늘 날짜의 교환 완료 회차 수와 제수량 합계를 반환합니다.",
+    summary="오늘 날짜의 기록 교환 요약",
+    description="오늘 날짜의 기록 교환 완료 회차 수와 제수량 합계, 그리고 제수량 계산값 합계와 불일치 여부를 반환합니다.",
     response_model=TodayExchangeSummary,
 )
 def api_get_today_exchange_summary(
