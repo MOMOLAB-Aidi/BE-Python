@@ -503,6 +503,7 @@ def get_today_exchange_summary(
             exchange_count=0,
             total_uf=0,
             record_uf_sum=0,
+            calculated_uf_sum=0,
             has_uf_mismatch=False,
         )
 
@@ -538,5 +539,6 @@ def get_today_exchange_summary(
         exchange_count=exchange_count,
         total_uf=total_uf,
         record_uf_sum=record_uf_sum,
+        calculated_uf_sum=calculated_uf_sum,
         has_uf_mismatch=has_uf_mismatch,
     )
